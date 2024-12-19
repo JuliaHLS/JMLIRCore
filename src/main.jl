@@ -6,6 +6,9 @@ using MLIR
 using MLIR.Dialects: arith, func, cf
 
 
+include("intrinsics.jl")
+
+
 #### USEFUL FUNCTIONS
 
 "Generates a block argument for each phi node present in the block."
@@ -22,19 +25,6 @@ function prepare_block(ir, bb)
   end
 
   return b
-end
-
-module Predicates
-const eq = 0
-const ne = 1
-const slt = 2
-const sle = 3
-const sgt = 4
-const sge = 5
-const ult = 6
-const ule = 7
-const ugt = 8
-const uge = 9
 end
 
 
@@ -57,38 +47,6 @@ function collect_value_arguments(ir, from, to)
   end
   return values
 end
-
-
-function cmpi_pred(predicate)
-  function (ops...; location=Location())
-    return arith.cmpi(ops...; result=IR.Type(Bool), predicate, location)
-  end
-end
-
-function single_op_wrapper(fop)
-  return (block::Block, args::Vector{Value}; location=Location()) ->
-    push!(block, fop(args...; location))
-end
-
-
-
-const intrinsics_to_mlir = Dict([
-  Base.add_int => single_op_wrapper(arith.addi),
-  Base.sle_int => single_op_wrapper(cmpi_pred(Predicates.sle)),
-  Base.slt_int => single_op_wrapper(cmpi_pred(Predicates.slt)),
-  Base.:(===) => single_op_wrapper(cmpi_pred(Predicates.eq)),
-  Base.mul_int => single_op_wrapper(arith.muli),
-  Base.mul_float => single_op_wrapper(arith.mulf),
-  Base.not_int => function (block, args; location=Location())
-    arg = only(args)
-    mT = IR.type(arg)
-    T = IR.julia_type(mT)
-    ones = IR.result(
-      push!(block, arith.constant(; value=typemax(UInt64) % T, result=mT, location)),
-    )
-    return push!(block, arith.xori(arg, ones; location))
-  end,
-])
 
 
 #### MAIN SCRIPT
@@ -134,7 +92,7 @@ f = pow
 types = Tuple{Int,Int}
 
 
-const BrutusScalar = Union{Bool,Int64,Int32,Float32,Float64}
+const ScalarTypes = Union{Bool,Int64,Int32,Float32,Float64}
 
 
 # load the basic context
@@ -173,7 +131,7 @@ function get_value(x)::Value
     values[x.id]
   elseif x isa Core.Argument
     IR.argument(entry_block, x.n - 1)
-  elseif x isa BrutusScalar
+  elseif x isa ScalarTypes 
     IR.result(push!(current_block, arith.constant(; value=x)))
   else
     error("could not use value $x inside MLIR")
@@ -193,23 +151,11 @@ for (block_id, (b, bb)) in enumerate(zip(blocks, ir.cfg.blocks))
     inst = stmt[:inst]
     # line = @static if VERSION <= v"1.11"
     line = ir.linetable[stmt[:line]+1]
-    # else
-    #   lineinfonode = Base.IRShow.buildLineInfoNode(ir.debuginfo, :var"n/a", sidx)
-    #   if !isempty(lineinfonode)
-    #     last(lineinfonode)
-    #   else
-    #     (;
-    #       (
-    #         (:file, :line) .=> Base.IRShow.debuginfo_firstline(ir.debuginfo)
-    #       )...
-    #     )
-    #   end
-    # end
-
+    
     # if constant val
     if Meta.isexpr(inst, :call)
       val_type = stmt[:type]
-      if !(val_type <: BrutusScalar)
+      if !(val_type <: ScalarTypes)
         error("type $val_type is not supported")
       end
       out_type = IR.Type(val_type)
@@ -219,7 +165,7 @@ for (block_id, (b, bb)) in enumerate(zip(blocks, ir.cfg.blocks))
         called_func = getproperty(called_func.mod, called_func.name)
       end
 
-      fop! = intrinsics_to_mlir[called_func]
+      fop! = intrinsic_to_mlir(called_func)
       args = get_value.(@view inst.args[(begin+1):end])
 
       location = Location(string(line.file), line.line, 0)
