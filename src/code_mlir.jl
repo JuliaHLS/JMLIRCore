@@ -11,7 +11,7 @@ include("expressions.jl")
 
 
 "Translate typed IR into MLIR"
-function translateMLIR(f, input_types, f_name)
+function code_mlir(f, input_types, f_name)
   ### Setup the context ###
   
   # load the basic context
