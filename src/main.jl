@@ -9,6 +9,7 @@ using MLIR.Dialects: arith, func, cf
 include("intrinsics.jl")
 include("blocks.jl")
 include("nodes.jl")
+include("expressions.jl")
 
 
 #### USEFUL FUNCTIONS
@@ -115,30 +116,12 @@ for (idx, (curr_block, bb)) in enumerate(zip(blocks.blocks, context.ir.cfg.block
     context.line = context.ir.linetable[context.stmt[:line]+1]
 
     
-    # if constant val
-    if Meta.isexpr(inst, :call)
-      val_type = context.stmt[:type]
-      if !(val_type <: ScalarTypes)
-        error("type $val_type is not supported")
-      end
-      out_type = IR.Type(val_type)
-
-      called_func = first(inst.args)
-      if called_func isa GlobalRef # TODO: should probably use something else here
-        called_func = getproperty(called_func.mod, called_func.name)
-      end
-
-      fop! = intrinsic_to_mlir(called_func)
-      args = get_value.(@view inst.args[(begin+1):end])
-
-      location = Location(string(context.line.file), context.line.line, 0)
-      res = IR.result(fop!(blocks.current_block, args; location))
-
-      context.values[context.sidx] = res
-
-    elseif Meta.isexpr(inst, :code_coverage_effect)
-      # Skip
+    # process struction
+    if inst isa Expr
+      # process expression
+      process_expr(inst, context, blocks)
     else
+      # process node
       process_node(inst, context, blocks)
     end
   end
