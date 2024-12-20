@@ -5,7 +5,7 @@ using MLIR.IR
 using MLIR
 using MLIR.Dialects: arith, func, cf
 
-include("translate.jl")
+include("code_mlir.jl")
 
 
 #### USEFUL FUNCTIONS
@@ -55,7 +55,7 @@ types = Tuple{Int,Int}
 const ScalarTypes = Union{Bool,Int64,Int32,Float32,Float64}
 
 
-op = translateMLIR(f, types, "sample")
+op = code_mlir(f, types)
 
 println(op)
 

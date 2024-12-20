@@ -10,8 +10,27 @@ include("blocks.jl")
 include("expressions.jl")
 
 
+"Macro @code_mlir f(args...)"
+macro code_mlir(call)
+    @assert Meta.isexpr(call, :call) "only calls are supported"
+
+    f = esc(first(call.args))
+    args = esc(
+        Expr(
+            :curly,
+            Tuple,
+            map(arg -> :($(Core.Typeof)($arg)), call.args[(begin + 1):end])...,
+        ),
+    )
+
+    quote
+        code_mlir($f, $args)
+    end
+end
+
+
 "Translate typed IR into MLIR"
-function code_mlir(f, input_types, f_name)
+function code_mlir(f, input_types)
   ### Setup the context ###
   
   # load the basic context
@@ -68,6 +87,8 @@ function code_mlir(f, input_types, f_name)
   input_types = IR.Type[
     IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
   ]
+
+  f_name = nameof(f)
 
   ftype = IR.FunctionType(input_types, result_types)
   op = IR.create_operation(
