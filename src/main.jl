@@ -7,47 +7,10 @@ using MLIR.Dialects: arith, func, cf
 
 
 include("intrinsics.jl")
+include("blocks.jl")
 
 
 #### USEFUL FUNCTIONS
-
-"Generates a block argument for each phi node present in the block."
-function prepare_block(ir, bb)
-  b = Block()
-
-  for sidx in bb.stmts
-    stmt = ir.stmts[sidx]
-    inst = stmt[:inst]
-    inst isa Core.PhiNode || continue
-
-    type = stmt[:type]
-    IR.push_argument!(b, IR.Type(type))
-  end
-
-  return b
-end
-
-
-"Values to populate the Phi Node when jumping from `from` to `to`."
-function collect_value_arguments(ir, from, to)
-  to = ir.cfg.blocks[to]
-  values = []
-  for s in to.stmts
-    stmt = ir.stmts[s]
-    inst = stmt[:inst]
-    inst isa Core.PhiNode || continue
-
-    edge = findfirst(==(from), inst.edges)
-    if isnothing(edge) # use dummy scalar val instead
-      val = zero(stmt[:type])
-      push!(values, val)
-    else
-      push!(values, inst.values[edge])
-    end
-  end
-  return values
-end
-
 
 #### MAIN SCRIPT
 
@@ -103,6 +66,7 @@ ir, ret = only(Core.Compiler.code_ircode(f, types))
 # values
 values = Vector{Value}(undef, length(ir.stmts))
 
+
 # load dialects
 for dialect in (:func, :cf)
   IR.register_dialect!(IR.DialectHandle(dialect))
@@ -111,32 +75,8 @@ IR.load_all_available_dialects()
 
 
 # gather basic blocks
-blocks = [prepare_block(ir, bb) for bb in ir.cfg.blocks]
-
-
-# enter block 1
-current_block = entry_block = blocks[begin]
-
-
-# add argtypes
-for argtype in types.parameters
-  IR.push_argument!(entry_block, IR.Type(argtype))
-end
-
-
-# get value
-function get_value(x)::Value
-  if x isa Core.SSAValue
-    @assert isassigned(values, x.id) "value $x was not assigned"
-    values[x.id]
-  elseif x isa Core.Argument
-    IR.argument(entry_block, x.n - 1)
-  elseif x isa ScalarTypes 
-    IR.result(push!(current_block, arith.constant(; value=x)))
-  else
-    error("could not use value $x inside MLIR")
-  end
-end
+entry_block, blocks = preprocess_code_blocks(ir)
+current_block = entry_block
 
 
 # iterate through the basic blocks
@@ -226,7 +166,7 @@ for (block_id, (b, bb)) in enumerate(zip(blocks, ir.cfg.blocks))
   end
 end
 
-func_name = nameof(f)
+func_name = "testFunc"
 
 region = Region()
 for b in blocks
@@ -252,6 +192,6 @@ op = IR.create_operation(
 
 IR.verifyall(op)
 
-println("GOT RESULT: ", op)
+println(op)
 
 
