@@ -8,6 +8,7 @@ using MLIR.Dialects: arith, func, cf
 
 include("intrinsics.jl")
 include("blocks.jl")
+include("nodes.jl")
 
 
 #### USEFUL FUNCTIONS
@@ -75,26 +76,48 @@ IR.load_all_available_dialects()
 
 
 # gather basic blocks
-entry_block, blocks = preprocess_code_blocks(ir)
+entry_block, block_array = preprocess_code_blocks(ir)
 current_block = entry_block
+
+context = Context(
+  ir,
+  values,
+  0,
+  nothing,
+  nothing,
+  nothing,
+)
+
+blocks = Blocks(
+  nothing,
+  current_block,
+  block_array,
+  nothing
+)
 
 
 # iterate through the basic blocks
-for (block_id, (b, bb)) in enumerate(zip(blocks, ir.cfg.blocks))
-  current_block = b
-  n_phi_nodes = 0
+# for (idx, (curr_block, bb)) in enumerate(zip(block_array, context.ir.cfg.blocks))
+for (idx, (curr_block, bb)) in enumerate(zip(blocks.blocks, context.ir.cfg.blocks))
+  blocks.block_id = idx
+  blocks.current_block = curr_block
+  blocks.bb = bb
+  context.n_phi_nodes = 0
 
 
   # process block statementiterate through block stmtss
-  for sidx in bb.stmts
-    stmt = ir.stmts[sidx]
-    inst = stmt[:inst]
+  for context.sidx in blocks.bb.stmts
+
+    context.stmt = context.ir.stmts[context.sidx]
+    inst = context.stmt[:inst]
     # line = @static if VERSION <= v"1.11"
-    line = ir.linetable[stmt[:line]+1]
+    line = context.line
+    context.line = context.ir.linetable[context.stmt[:line]+1]
+
     
     # if constant val
     if Meta.isexpr(inst, :call)
-      val_type = stmt[:type]
+      val_type = context.stmt[:type]
       if !(val_type <: ScalarTypes)
         error("type $val_type is not supported")
       end
@@ -108,60 +131,15 @@ for (block_id, (b, bb)) in enumerate(zip(blocks, ir.cfg.blocks))
       fop! = intrinsic_to_mlir(called_func)
       args = get_value.(@view inst.args[(begin+1):end])
 
-      location = Location(string(line.file), line.line, 0)
-      res = IR.result(fop!(current_block, args; location))
+      location = Location(string(context.line.file), context.line.line, 0)
+      res = IR.result(fop!(blocks.current_block, args; location))
 
-      values[sidx] = res
-
-
-    elseif inst isa PhiNode     # is a PhiNode
-      values[sidx] = IR.argument(current_block, n_phi_nodes += 1)
-
-
-    elseif inst isa PiNode      # is a PiNode
-      values[sidx] = get_value(inst.val)
-
-
-    elseif inst isa GotoNode    # is a GotoNode
-      ReturnNode
-      args = get_value.(collect_value_arguments(ir, block_id, inst.label))
-      dest = blocks[inst.label]
-      location = Location(string(line.file), line.line, 0)
-      push!(current_block, cf.br(args; dest, location))
-
-
-    elseif inst isa GotoIfNot   # is a GotoIfNot
-      println("GotoIfNot")
-      false_args = get_value.(collect_value_arguments(ir, block_id, inst.dest))
-      cond = get_value(inst.cond)
-      @assert length(bb.succs) == 2 # NOTE: We assume that length(bb.succs) == 2, this might be wrong
-      other_dest = only(setdiff(bb.succs, inst.dest))
-      true_args = get_value.(collect_value_arguments(ir, block_id, other_dest))
-      other_dest = blocks[other_dest]
-      dest = blocks[inst.dest]
-
-      location = Location(string(line.file), line.line, 0)
-      cond_br = cf.cond_br(
-        cond,
-        true_args,
-        false_args;
-        trueDest=other_dest,
-        falseDest=dest,
-        location,
-      )
-      push!(current_block, cond_br)
-
-
-    elseif inst isa ReturnNode   # is a ReturnNode
-      println("ReturnNode")
-      location = Location(string(line.file), line.line, 0)
-      push!(current_block, func.return_([get_value(inst.val)]; location))
-
+      context.values[context.sidx] = res
 
     elseif Meta.isexpr(inst, :code_coverage_effect)
       # Skip
     else
-      error("unhandled ir $(inst)")
+      process_node(inst, context, blocks)
     end
   end
 end
@@ -169,7 +147,7 @@ end
 func_name = "testFunc"
 
 region = Region()
-for b in blocks
+for b in blocks.blocks
   push!(region, b)
 end
 
