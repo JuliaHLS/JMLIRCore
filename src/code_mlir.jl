@@ -52,7 +52,7 @@ function code_mlir(f, input_types)
   values = Vector{Value}(undef, length(ir.stmts))
 
   # gather basic blocks
-  entry_block, block_array = preprocess_code_blocks(ir)
+  entry_block, block_array = preprocess_code_blocks(ir, input_types)
   current_block = entry_block
 
   # set up context variables

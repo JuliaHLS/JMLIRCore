@@ -63,7 +63,7 @@ end
 
 
 
-function preprocess_code_blocks(ir)
+function preprocess_code_blocks(ir, types)
   @assert first(ir.argtypes) isa Core.Const
 
   # preprocess all blocks

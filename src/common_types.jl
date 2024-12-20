@@ -26,3 +26,6 @@ end
 # enforce that these types are not broadcastable
 Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
+
+
+const ScalarTypes = Union{Bool,Int64,Int32,Float32,Float64}
