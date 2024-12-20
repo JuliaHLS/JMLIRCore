@@ -48,14 +48,14 @@ end
 
 
 # get value
-function get_value(x)::Value
+function get_value(x, context::Context, blocks::Blocks)::Value
   if x isa Core.SSAValue
-    @assert isassigned(values, x.id) "value $x was not assigned"
-    values[x.id]
+    @assert isassigned(context.values, x.id) "value $x was not assigned"
+    context.values[x.id]
   elseif x isa Core.Argument
-    IR.argument(entry_block, x.n - 1)
+    IR.argument(blocks.entry_block, x.n - 1)
   elseif x isa ScalarTypes 
-    IR.result(push!(current_block, arith.constant(; value=x)))
+    IR.result(push!(blocks.current_block, arith.constant(; value=x)))
   else
     error("could not use value $x inside MLIR")
   end

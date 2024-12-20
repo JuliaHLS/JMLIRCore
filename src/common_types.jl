@@ -18,8 +18,11 @@ end
 mutable struct Blocks
   block_id
   current_block
+  entry_block
   blocks::Array
   bb
 end
 
-
+# enforce that these types are not broadcastable
+Base.broadcastable(c::Context) = Ref(c)
+Base.broadcastable(b::Blocks) = Ref(b)
