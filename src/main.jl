@@ -8,7 +8,6 @@ using MLIR.Dialects: arith, func, cf
 
 include("intrinsics.jl")
 include("blocks.jl")
-include("nodes.jl")
 include("expressions.jl")
 
 
@@ -99,33 +98,8 @@ blocks = Blocks(
 
 # iterate through the basic blocks
 # for (idx, (curr_block, bb)) in enumerate(zip(block_array, context.ir.cfg.blocks))
-for (idx, (curr_block, bb)) in enumerate(zip(blocks.blocks, context.ir.cfg.blocks))
-  blocks.block_id = idx
-  blocks.current_block = curr_block
-  blocks.bb = bb
-  context.n_phi_nodes = 0
 
-
-  # process block statementiterate through block stmtss
-  for context.sidx in blocks.bb.stmts
-
-    context.stmt = context.ir.stmts[context.sidx]
-    inst = context.stmt[:inst]
-    # line = @static if VERSION <= v"1.11"
-    line = context.line
-    context.line = context.ir.linetable[context.stmt[:line]+1]
-
-    
-    # process struction
-    if inst isa Expr
-      # process expression
-      process_expr(inst, context, blocks)
-    else
-      # process node
-      process_node(inst, context, blocks)
-    end
-  end
-end
+process_blocks(blocks, context)
 
 func_name = "testFunc"
 

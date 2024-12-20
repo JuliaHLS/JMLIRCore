@@ -5,6 +5,7 @@ using MLIR.IR
 using MLIR
 using MLIR.Dialects: arith, func, cf
 
+include("nodes.jl")
 
 ## Basic Block Preprocessing
 
@@ -78,4 +79,37 @@ function preprocess_code_blocks(ir)
   end
 
   return entry_block, blocks
+end
+
+
+function process_blocks(blocks::Blocks, context::Context)
+  
+  # process each block into MLIR
+  for (idx, (curr_block, bb)) in enumerate(zip(blocks.blocks, context.ir.cfg.blocks))
+    blocks.block_id = idx
+    blocks.current_block = curr_block
+    blocks.bb = bb
+    context.n_phi_nodes = 0
+
+
+    # process block statementiterate through block stmtss
+    for context.sidx in blocks.bb.stmts
+
+      context.stmt = context.ir.stmts[context.sidx]
+      inst = context.stmt[:inst]
+      # line = @static if VERSION <= v"1.11"
+      line = context.line
+      context.line = context.ir.linetable[context.stmt[:line]+1]
+
+      
+      # process struction
+      if inst isa Expr
+        # process expression
+        process_expr(inst, context, blocks)
+      else
+        # process node
+        process_node(inst, context, blocks)
+      end
+    end
+  end
 end
