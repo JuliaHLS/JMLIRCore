@@ -10,7 +10,6 @@ include("common_types.jl")
 
 # process PhiNode
 function process_node(inst::PhiNode, context::Context, blocks::Blocks)
-  println("h")
   context.values[context.sidx] = IR.argument(blocks.current_block, context.n_phi_nodes += 1)
 end
 

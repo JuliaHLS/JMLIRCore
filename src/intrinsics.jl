@@ -38,6 +38,7 @@ end
 # INTEGER INTRINSICS
 const integer_intrinsics_to_mlir = Dict([
   Base.add_int => single_op_wrapper(arith.addi),
+  Base.sub_int => single_op_wrapper(arith.subi),
   Base.sle_int => single_op_wrapper(cmpi_pred(Predicates.sle)),
   Base.slt_int => single_op_wrapper(cmpi_pred(Predicates.slt)),
   Base.mul_int => single_op_wrapper(arith.muli),

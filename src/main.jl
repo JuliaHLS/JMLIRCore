@@ -55,7 +55,7 @@ types = Tuple{Int,Int}
 const ScalarTypes = Union{Bool,Int64,Int32,Float32,Float64}
 
 
-op = code_mlir(f, types)
+op = code_mlir(test, types)
 
 println(op)
 

@@ -98,8 +98,6 @@ function process_blocks(blocks::Blocks, context::Context)
       inst = context.stmt[:inst]
 
       line = context.line
-      # println("currently at line: $context.stmt[:line]")
-      # println(context.ir.linetable[context.stmt[:line]])
       
       # TODO: find a proper way to track the source of statements in the linetable, as this breaks when returning built-in functions (i.e return a + b) and needs to be set without the +1
       if (context.stmt[:line]+1 > length(context.ir.linetable))
@@ -108,7 +106,6 @@ function process_blocks(blocks::Blocks, context::Context)
         # find the location of the statement in the linetable
         context.line = context.ir.linetable[context.stmt[:line]+1]
       end
-      # println("f: ", context.line.file)
 
 
       # process struction
