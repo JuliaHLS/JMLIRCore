@@ -10,6 +10,36 @@ include("common_types.jl")
 
 # process PhiNode
 function process_node(inst::PhiNode, context::Context, blocks::Blocks)
+  # NOTE: CIRCT only allows 2 paths to merge, this needs to be fixed with the merge block insertion pass when writing the HLS tool
+  # check if each block completes the route to the current block
+  for (block_id, arg) in zip(inst.edges, inst.values)
+    block = blocks.blocks[block_id]
+    bb = context.ir.cfg.blocks[block_id]
+    
+    goto_exists = false
+
+    for ctx_idx in bb.stmts
+      tmp_inst = context.ir.stmts[ctx_idx][:inst]
+
+      if tmp_inst isa GotoNode || tmp_inst isa GotoIfNot
+        goto_exists = true
+      end
+    end
+
+    # insert a goto to the current block with the required arguments
+    if !goto_exists
+      # TODO: check that this works for arrays of arguments
+      cond_br = cf.br(
+        [get_value(arg, context, blocks)], 
+          dest=blocks.current_block
+        )
+      push!(block, cond_br)
+    end
+
+
+  end
+
+
   context.values[context.sidx] = IR.argument(blocks.current_block, context.n_phi_nodes += 1)
 end
 

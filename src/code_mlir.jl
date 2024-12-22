@@ -73,6 +73,7 @@ function code_mlir(f, input_types)
     nothing
   )
 
+  MLIR.IR.Block
 
   ### Process into blocks ###
   process_blocks(blocks, context)
@@ -81,12 +82,16 @@ function code_mlir(f, input_types)
   for b in blocks.blocks
     push!(region, b)
   end
+  
+  # push!(region, blocks.blocks[1])
 
 
   ### Format output ###
   input_types = IR.Type[
     IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
   ]
+
+  # println("Got input types: ", input_types)
 
   f_name = nameof(f)
 
@@ -101,6 +106,7 @@ function code_mlir(f, input_types)
     owned_regions=Region[region],
     result_inference=false,
   )
+
 
   ### Verify validity of the MLIR generated ###
   IR.verifyall(op)

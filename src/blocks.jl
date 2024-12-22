@@ -107,7 +107,6 @@ function process_blocks(blocks::Blocks, context::Context)
         context.line = context.ir.linetable[context.stmt[:line]+1]
       end
 
-
       # process struction
       if inst isa Expr
         # process expression
