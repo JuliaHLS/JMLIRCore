@@ -7,14 +7,14 @@ using MLIR.Dialects: arith, func, cf
 
 include("common_types.jl")
 
-
-# process PhiNode
-function process_node(inst::PhiNode, context::Context, blocks::Blocks)
+function postfix_nodes(context, blocks)
   # NOTE: CIRCT only allows 2 paths to merge, this needs to be fixed with the merge block insertion pass when writing the HLS tool
+  
   # check if each block completes the route to the current block
-  for (block_id, arg) in zip(inst.edges, inst.values)
-    block = blocks.blocks[block_id]
-    bb = context.ir.cfg.blocks[block_id]
+
+  for (source_block, values) in context.phi_nodes_metadata 
+    block = blocks.blocks[source_block]
+    bb = context.ir.cfg.blocks[source_block]
     
     goto_exists = false
 
@@ -26,17 +26,40 @@ function process_node(inst::PhiNode, context::Context, blocks::Blocks)
       end
     end
 
+
     # insert a goto to the current block with the required arguments
     if !goto_exists
-      # TODO: check that this works for arrays of arguments
+      # change current block to the destination
+      destination = blocks.current_block 
+      blocks.current_block = block
+
+      # expand values
+      values = get_value.(values, context, blocks)
+
+      # insert the conditional break with the expected parameters
       cond_br = cf.br(
-        [get_value(arg, context, blocks)], 
-          dest=blocks.current_block
+        values, 
+          dest=destination
         )
       push!(block, cond_br)
+
+      # reset current block
+      blocks.current_block = destination
     end
 
 
+  end
+
+
+end
+
+# process PhiNode
+function process_node(inst::PhiNode, context::Context, blocks::Blocks)
+  
+  # collect phi node metadata
+  for (source_block_idx, value) in zip(inst.edges, inst.values)
+    mapped_ref = get!(context.phi_nodes_metadata, source_block_idx, [])
+    push!(mapped_ref, value)
   end
 
 

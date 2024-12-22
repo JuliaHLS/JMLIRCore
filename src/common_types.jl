@@ -10,6 +10,7 @@ mutable struct Context
   ir::Core.Compiler.IRCode
   values::Vector{Value}
   n_phi_nodes::Int
+  phi_nodes_metadata::Dict{Int, Vector{Any}}
   sidx
   line
   stmt

@@ -90,6 +90,7 @@ function process_blocks(blocks::Blocks, context::Context)
     blocks.current_block = curr_block
     blocks.bb = bb
     context.n_phi_nodes = 0
+    context.phi_nodes_metadata = Dict{Int, Vector{Any}}()
 
 
     # process block statementiterate through block stmtss
@@ -116,5 +117,9 @@ function process_blocks(blocks::Blocks, context::Context)
         process_node(inst, context, blocks)
       end
     end
+
+    ### FIX NODES
+    # println(context.phi_nodes_metadata)
+    postfix_nodes(context, blocks)
   end
 end

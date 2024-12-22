@@ -60,6 +60,7 @@ function code_mlir(f, input_types)
     ir,
     values,
     0,
+    Dict{Int, Vector{Any}}(),
     nothing,
     0,
     nothing,
