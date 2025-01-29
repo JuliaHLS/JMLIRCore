@@ -8,6 +8,7 @@ using MLIR.Dialects: arith, func, cf
 include("intrinsics.jl")
 include("blocks.jl")
 include("expressions.jl")
+include("MLIRInterpreter.jl")
 
 
 "Macro @code_mlir f(args...)"
@@ -42,9 +43,12 @@ function code_mlir(f, input_types)
   end
   IR.load_all_available_dialects()
 
+
+  ### Initialise abstract interprete ###
+  interp = MLIRInterpreter()
   
   ### Preprocess ###
-  ir, ret = only(Core.Compiler.code_ircode(f, input_types))
+  ir, ret = only(CC.code_ircode(f, input_types; interp=interp))
   @assert first(ir.argtypes) isa Core.Const
   result_types = [IR.Type(ret)]
 
