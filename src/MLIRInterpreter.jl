@@ -101,7 +101,3 @@ function test(a, b)
     end
 end
 
-# example usage:
-interp = MLIRInterpreter()
-result = CC.code_ircode(test, Tuple{Int,Int}; interp=interp)
-println(result)

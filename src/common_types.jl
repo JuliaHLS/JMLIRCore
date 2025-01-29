@@ -5,9 +5,11 @@ using MLIR.IR
 using MLIR
 using MLIR.Dialects: arith, func, cf
 
+include("compiler.jl")
+
 
 mutable struct Context
-  ir::Core.Compiler.IRCode
+  ir::CC.IRCode
   values::Vector{Value}
   n_phi_nodes::Int
   phi_nodes_metadata::Dict{Int, Vector{Any}}
