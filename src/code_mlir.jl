@@ -112,6 +112,8 @@ function code_mlir(f, input_types)
     result_inference=false,
   )
 
+  println(typeof(op))
+          
 
   ### Verify validity of the MLIR generated ###
   IR.verifyall(op)
