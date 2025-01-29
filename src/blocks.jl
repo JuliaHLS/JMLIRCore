@@ -101,12 +101,12 @@ function process_blocks(blocks::Blocks, context::Context)
       line = context.line
       
       # TODO: find a proper way to track the source of statements in the linetable, as this breaks when returning built-in functions (i.e return a + b) and needs to be set without the +1
-      if (context.stmt[:line]+1 > length(context.ir.linetable))
-        context.line = context.ir.linetable[context.stmt[:line]]
-      else
-        # find the location of the statement in the linetable
-        context.line = context.ir.linetable[context.stmt[:line]+1]
-      end
+      # if (context.stmt[:line]+1 > length(context.ir.linetable))
+      #   context.line = context.ir.linetable[context.stmt[:line]]
+      # else
+      #   # find the location of the statement in the linetable
+      #   context.line = context.ir.linetable[context.stmt[:line]+1]
+      # end
 
       # process struction
       if inst isa Expr

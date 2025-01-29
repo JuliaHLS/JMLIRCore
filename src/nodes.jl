@@ -107,10 +107,10 @@ end
 
 function process_node(inst::ReturnNode, context::Context, blocks::Blocks)
   # find the symbols tag where the return comes from (with column number)
-  location = Location(string(context.line.file), context.line.line, 0)
+  # location = Location(string(context.line.file), context.line.line, 0)
 
   # add to the block for debugging
-  push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]; location))
+  push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]))
 end
 
 
