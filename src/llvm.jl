@@ -24,4 +24,13 @@ function lower_llvm(op::IR.Operation)
     println(mod)
 
     IR.enable_verifier!(pm, true)
+
+    return mod
+end
+
+
+function evaluate_llvm(mod::IR.Module)
+    jit = MLIR.API.mlirExecutionEngineCreate(mod, 0, 0, C_NULL, false)
+    MLIR.API.mlirExecutionEngineLookup(jit, "test4")
+    println("Created MLIR execution engine")
 end
