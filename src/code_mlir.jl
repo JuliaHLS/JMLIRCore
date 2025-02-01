@@ -25,6 +25,8 @@ macro code_mlir(call)
         ),
     )
 
+    println("got args: ", args)
+
     quote
         code_mlir($f, $args)
     end
@@ -32,126 +34,97 @@ end
 
 
 "Translate typed IR into MLIR"
-function code_mlir(f, input_types)
+function code_mlir(f, types)
   ### Setup the context ###
-  glob_op = "" 
   
-  # load the basic context
-  fptr = IR.context!(IR.Context()) do
-      # load dialects
-      for dialect in (:func, :cf)
-        IR.register_dialect!(IR.DialectHandle(dialect))
-      end
-      IR.load_all_available_dialects()
-
-
-      ### Initialise abstract interprete ###
-      interp = MLIRInterpreter()
-      
-      ### Preprocess ###
-      ir, ret = only(CC.code_ircode(f, input_types; interp=interp))
-      @assert first(ir.argtypes) isa Core.Const
-      result_types = [IR.Type(ret)]
-
-      # values
-      values = Vector{Value}(undef, length(ir.stmts))
-
-      # gather basic blocks
-      entry_block, block_array = preprocess_code_blocks(ir, input_types)
-      current_block = entry_block
-
-      # set up context variables
-      context = Context(
-        ir,
-        values,
-        0,
-        Dict{Int, Vector{Any}}(),
-        nothing,
-        0,
-        nothing,
-      )
-
-      blocks = Blocks(
-        nothing,
-        current_block,
-        entry_block,
-        block_array,
-        nothing
-      )
-
-      MLIR.IR.Block
-
-      ### Process into blocks ###
-      process_blocks(blocks, context)
-
-      region = Region()
-      for b in blocks.blocks
-        push!(region, b)
-      end
-      
-      # push!(region, blocks.blocks[1])
-
-
-      ### Format output ###
-      input_types = IR.Type[
-        IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
-      ]
-
-      # println("Got input types: ", input_types)
-
-      f_name = nameof(f)
-
-      ftype = IR.FunctionType(input_types, result_types)
-      op = IR.create_operation(
-        "func.func",
-        Location();
-        attributes=[
-          IR.NamedAttribute("sym_name", IR.Attribute(string(f_name))),
-          IR.NamedAttribute("function_type", IR.Attribute(ftype)),
-        ],
-        owned_regions=Region[region],
-        result_inference=false,
-      )
-
-      println(typeof(op))
-              
-
-      ### Verify validity of the MLIR generated ###
-      IR.verifyall(op)
-      glob_op = op
-
-        mod = IR.Module(Location())
-        body = IR.body(mod)
-        push!(body, op)
-
-        pm = IR.PassManager()
-        opm = IR.OpPassManager(pm)
-
-        MLIR.API.mlirRegisterAllPasses()
-        MLIR.API.mlirRegisterAllLLVMTranslations(IR.context())
-        MLIR.API.mlirRegisterConversionConvertToLLVMPass()
-
-        IR.add_pipeline!(opm, "convert-arith-to-llvm,convert-func-to-llvm")
-
-        IR.run!(pm, mod)
-        println(mod)
-
-        IR.enable_verifier!(pm, true)
-
-
-        jit = MLIR.API.mlirExecutionEngineCreate(mod, 0, 0, C_NULL, false)
-        MLIR.API.mlirExecutionEngineLookup(jit, "test4")
-        # println("Created MLIR execution engine")
+  println("args: ", types)
+  if !IR._has_context()
+      ctx = IR.Context
   end
+  
+  # load dialects
+  for dialect in (:func, :cf)
+    IR.register_dialect!(IR.DialectHandle(dialect))
+  end
+  IR.load_all_available_dialects()
 
 
-  x, y = 3, 4
+  ### Initialise abstract interpreter ###
+  interp = MLIRInterpreter()
+  println("h2")
+  
+  ### Preprocess ###
+  ir, ret = only(CC.code_ircode(f, types; interp=interp))
+  @assert first(ir.argtypes) isa Core.Const
+  result_types = [IR.Type(ret)]
 
-  # println("lowering ops for LLVM execution: ", typeof(fptr))
-  # evaluate_llvm(lower_llvm(fptr))
+  # values
+  values = Vector{Value}(undef, length(ir.stmts))
 
-  println("Calling execution engine: ", ccall(fptr, Int, (Int, Int), x, y))
+  # gather basic blocks
+  println("types: ", types, " with typeof: ", typeof(types))
+  entry_block, block_array = preprocess_code_blocks(ir, types)
+  current_block = entry_block
+
+  # set up context variables
+  context = Context(
+    ir,
+    values,
+    0,
+    Dict{Int, Vector{Any}}(),
+    nothing,
+    0,
+    nothing,
+  )
+
+  blocks = Blocks(
+    nothing,
+    current_block,
+    entry_block,
+    block_array,
+    nothing
+  )
+
+  
+  println("here")
+  ### Process into blocks ###
+  process_blocks(blocks, context)
+
+  region = Region()
+  for b in blocks.blocks
+    push!(region, b)
+  end
+  
+
+  ### Format output ###
+  input_types = IR.Type[
+    IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
+  ]
+
+
+  # extract function metadata
+  f_name = nameof(f)
+  ftype = IR.FunctionType(input_types, result_types)
+
+  # create mlir operation (function call)
+  op = IR.create_operation(
+    "func.func",
+    Location();
+    attributes=[
+      IR.NamedAttribute("sym_name", IR.Attribute(string(f_name))),
+      IR.NamedAttribute("function_type", IR.Attribute(ftype)),
+    ],
+    owned_regions=Region[region],
+    result_inference=false,
+  )
+
+
+  ### Verify validity of the MLIR generated ###
+  IR.verifyall(op)
+
+
+  println("verified")
 
   ### return result ###
-  return glob_op 
+  return op 
 end
