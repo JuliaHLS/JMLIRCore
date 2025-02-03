@@ -25,8 +25,6 @@ macro code_mlir(call)
         ),
     )
 
-    println("got args: ", args)
-
     quote
         code_mlir($f, $args)
     end
@@ -37,7 +35,6 @@ end
 function code_mlir(f, types)
   ### Setup the context ###
   
-  println("args: ", types)
   if !IR._has_context()
       ctx = IR.Context
   end
@@ -51,7 +48,6 @@ function code_mlir(f, types)
 
   ### Initialise abstract interpreter ###
   interp = MLIRInterpreter()
-  println("h2")
   
   ### Preprocess ###
   ir, ret = only(CC.code_ircode(f, types; interp=interp))
@@ -62,7 +58,6 @@ function code_mlir(f, types)
   values = Vector{Value}(undef, length(ir.stmts))
 
   # gather basic blocks
-  println("types: ", types, " with typeof: ", typeof(types))
   entry_block, block_array = preprocess_code_blocks(ir, types)
   current_block = entry_block
 
@@ -86,7 +81,6 @@ function code_mlir(f, types)
   )
 
   
-  println("here")
   ### Process into blocks ###
   process_blocks(blocks, context)
 
@@ -122,8 +116,6 @@ function code_mlir(f, types)
   ### Verify validity of the MLIR generated ###
   IR.verifyall(op)
 
-
-  println("verified")
 
   ### return result ###
   return op 

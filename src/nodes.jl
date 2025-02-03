@@ -92,7 +92,7 @@ function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
   other_dest = blocks.blocks[other_dest]
   dest = blocks.blocks[inst.dest]
 
-  location = Location(string(context.line.file), context.line.line, 0)
+  location = Location() #string(context.line.file), context.line.line, 0)
   cond_br = cf.cond_br(
     cond,
     true_args,

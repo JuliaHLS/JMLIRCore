@@ -21,7 +21,6 @@ end
 
 "Execute function using MLIR pipeline"
 function eval_mlir(f, args...)
-    println("here")
     # preprocess arguments
     # arg_types = Tuple(map(arg-> Core.Typeof(arg), args[2:end]))# Tuple{Core.Typeof(5), Core.Typeof(10)}
     arg_types = eval(Expr(
@@ -30,16 +29,11 @@ function eval_mlir(f, args...)
             map(arg -> :($(Core.Typeof)($arg)), args[(begin + 1):end])...,
            ))
     arg_types_tuple = map(arg -> typeof(arg), args[(begin + 1):end])
-    println("a: ", arg_types_tuple, " -- ", typeof(arg_types_tuple))
 
     # get the function ptr within the JIT
     fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
         op::IR.Operation = code_mlir(f, arg_types) 
-        println("processed successfully")
-        println(op)
-
-
         # encapsulate into a module
         mod = IR.Module(Location())
         body = IR.body(mod)
@@ -67,20 +61,13 @@ function eval_mlir(f, args...)
         jit = MLIR.API.mlirExecutionEngineCreate(mod, 0, 0, C_NULL, false)
 
         # register function call within the JIT
-        println("registered fn name: ", nameof(f))
         MLIR.API.mlirExecutionEngineLookup(jit, nameof(f))
     end
-    println("finished")
-    println(typeof(fptr))
-
 
     expanded_args = Expr(:tuple, args[2:end]...)
     expanded_types = Expr(:tuple, arg_types_tuple...)
-    println(eval(expanded_types))
-    println("a: ", arg_types_tuple, " -- ", typeof(arg_types_tuple))
-    a = :(ccall($fptr, Int, $(expanded_types), $(expanded_args.args...)))
-    # println(a)
+    dynamic_call = :(ccall($fptr, Int, $(expanded_types), $(expanded_args.args...)))
 
-    return eval(a)
+    return eval(dynamic_call)
 end
 

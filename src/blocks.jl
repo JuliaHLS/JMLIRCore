@@ -119,7 +119,6 @@ function process_blocks(blocks::Blocks, context::Context)
     end
 
     ### FIX NODES
-    # println(context.phi_nodes_metadata)
     postfix_nodes(context, blocks)
   end
 end
