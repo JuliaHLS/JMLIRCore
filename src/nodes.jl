@@ -78,7 +78,7 @@ end
 function process_node(inst::GotoNode, context::Context, blocks::Blocks)
   args = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.label), context, blocks)
   dest = blocks.blocks[inst.label]
-  location = Location(string(context.line.file), context.line.line, 0)
+  location = Location()#Location(string(context.line.file), context.line.line, 0)
   push!(blocks.current_block, cf.br(args; dest, location))
 end
 

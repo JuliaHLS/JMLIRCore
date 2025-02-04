@@ -9,7 +9,6 @@ include("intrinsics.jl")
 include("blocks.jl")
 include("expressions.jl")
 include("MLIRInterpreter.jl")
-include("llvm.jl")
 
 
 "Macro @code_mlir f(args...)"
@@ -25,6 +24,10 @@ macro code_mlir(call)
         ),
     )
 
+
+    # force get a new by default (if we call code_mlir via the macro)
+    ctx = IR.Context()
+
     quote
         code_mlir($f, $args)
     end
@@ -36,7 +39,7 @@ function code_mlir(f, types)
   ### Setup the context ###
   
   if !IR._has_context()
-      ctx = IR.Context
+      ctx = IR.Context()
   end
   
   # load dialects
