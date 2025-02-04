@@ -29,8 +29,8 @@ end
 
 # compare single operations
 function single_op_wrapper(fop)
-  return (block::Block, args::Vector{Value}; location=Location()) ->
-    push!(block, fop(args...; location))
+    return (block::Block, args::Vector{Value}; result=nothing::Union{Nothing, IR.Type}, location=Location()) ->
+    push!(block, fop(args...; result, location))
 end
 
 
