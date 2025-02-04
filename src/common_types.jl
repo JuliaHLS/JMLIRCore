@@ -9,7 +9,7 @@ include("compiler.jl")
 
 
 mutable struct Context
-  ir::CC.IRCode
+  ir::Core.Compiler.IRCode
   values::Vector{Value}
   n_phi_nodes::Int
   phi_nodes_metadata::Dict{Int, Vector{Any}}

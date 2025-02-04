@@ -24,6 +24,10 @@ macro code_mlir(call)
         ),
     )
 
+
+    # force get a new by default (if we call code_mlir via the macro)
+    ctx = IR.Context()
+
     quote
         code_mlir($f, $args)
     end
@@ -31,12 +35,13 @@ end
 
 
 "Translate typed IR into MLIR"
-function code_mlir(f, input_types)
+function code_mlir(f, types)
   ### Setup the context ###
   
-  # load the basic context
-  ctx = IR.Context()
-
+  if !IR._has_context()
+      ctx = IR.Context()
+  end
+  
   # load dialects
   for dialect in (:func, :cf)
     IR.register_dialect!(IR.DialectHandle(dialect))
@@ -44,11 +49,11 @@ function code_mlir(f, input_types)
   IR.load_all_available_dialects()
 
 
-  ### Initialise abstract interprete ###
+  ### Initialise abstract interpreter ###
   interp = MLIRInterpreter()
   
   ### Preprocess ###
-  ir, ret = only(CC.code_ircode(f, input_types; interp=interp))
+  ir, ret = only(CC.code_ircode(f, types; interp=interp))
   @assert first(ir.argtypes) isa Core.Const
   result_types = [IR.Type(ret)]
 
@@ -56,7 +61,7 @@ function code_mlir(f, input_types)
   values = Vector{Value}(undef, length(ir.stmts))
 
   # gather basic blocks
-  entry_block, block_array = preprocess_code_blocks(ir, input_types)
+  entry_block, block_array = preprocess_code_blocks(ir, types)
   current_block = entry_block
 
   # set up context variables
@@ -78,8 +83,7 @@ function code_mlir(f, input_types)
     nothing
   )
 
-  MLIR.IR.Block
-
+  
   ### Process into blocks ###
   process_blocks(blocks, context)
 
@@ -88,19 +92,18 @@ function code_mlir(f, input_types)
     push!(region, b)
   end
   
-  # push!(region, blocks.blocks[1])
-
 
   ### Format output ###
   input_types = IR.Type[
     IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
   ]
 
-  # println("Got input types: ", input_types)
 
+  # extract function metadata
   f_name = nameof(f)
-
   ftype = IR.FunctionType(input_types, result_types)
+
+  # create mlir operation (function call)
   op = IR.create_operation(
     "func.func",
     Location();

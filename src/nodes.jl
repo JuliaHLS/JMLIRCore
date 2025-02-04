@@ -78,7 +78,7 @@ end
 function process_node(inst::GotoNode, context::Context, blocks::Blocks)
   args = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.label), context, blocks)
   dest = blocks.blocks[inst.label]
-  location = Location(string(context.line.file), context.line.line, 0)
+  location = Location()#Location(string(context.line.file), context.line.line, 0)
   push!(blocks.current_block, cf.br(args; dest, location))
 end
 
@@ -92,7 +92,7 @@ function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
   other_dest = blocks.blocks[other_dest]
   dest = blocks.blocks[inst.dest]
 
-  location = Location(string(context.line.file), context.line.line, 0)
+  location = Location() #string(context.line.file), context.line.line, 0)
   cond_br = cf.cond_br(
     cond,
     true_args,
@@ -107,10 +107,10 @@ end
 
 function process_node(inst::ReturnNode, context::Context, blocks::Blocks)
   # find the symbols tag where the return comes from (with column number)
-  location = Location(string(context.line.file), context.line.line, 0)
+  # location = Location(string(context.line.file), context.line.line, 0)
 
   # add to the block for debugging
-  push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]; location))
+  push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]))
 end
 
 

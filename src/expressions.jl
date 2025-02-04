@@ -22,8 +22,8 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
     fop! = intrinsic_to_mlir(called_func)
     args = get_value.(inst.args[(begin+1):end], context, blocks)
 
-    location = Location(string(context.line.file), context.line.line, 0)
-    res = IR.result(fop!(blocks.current_block, args; location))
+    # location = Location(string(context.line.file), context.line.line, 0)
+    res = IR.result(fop!(blocks.current_block, args))
 
     context.values[context.sidx] = res
 

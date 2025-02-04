@@ -6,28 +6,28 @@ include("compiler.jl")
 MLIRInterpreter implements custom behaviour for the MLIR hardware compilation pipeline
 without modifying default behaviour
 """
-struct MLIRInterpreter <: CC.AbstractInterpreter
+struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
     # The world age we're working inside of
     world::UInt
 
     # method table to lookup for during inference on this world age
-    method_table::CC.CachedMethodTable{CC.InternalMethodTable}
+    method_table::Core.Compiler.CachedMethodTable{Core.Compiler.InternalMethodTable}
 
     # Cache of inference results for this particular interpreter
-    inf_cache::Vector{CC.InferenceResult}
+    inf_cache::Vector{Core.Compiler.InferenceResult}
     codegen::IdDict{CC.CodeInstance,CC.CodeInfo}
 
     # Parameters for inference and optimization
-    inf_params::CC.InferenceParams
-    opt_params::CC.OptimizationParams
+    inf_params::Core.Compiler.InferenceParams
+    opt_params::Core.Compiler.OptimizationParams
 end
 
 
 
 # default constructor
 function MLIRInterpreter(world::UInt=CC.get_world_counter();
-    inf_params::CC.InferenceParams=CC.InferenceParams(),
-    opt_params::CC.OptimizationParams=CC.OptimizationParams())
+    inf_params::Core.Compiler.InferenceParams=Core.Compiler.InferenceParams(),
+    opt_params::Core.Compiler.OptimizationParams=Core.Compiler.OptimizationParams())
     curr_max_world = CC.get_world_counter()
 
     # Sometimes the caller is lazy and passes typemax(UInt).
@@ -40,19 +40,19 @@ function MLIRInterpreter(world::UInt=CC.get_world_counter();
     # incorrect, fail out loudly.
     @assert world <= curr_max_world
 
-    method_table = CC.CachedMethodTable(CC.InternalMethodTable(world))
-    inf_cache = Vector{CC.InferenceResult}() # Initially empty cache
+    method_table = Core.Compiler.CachedMethodTable(Core.Compiler.InternalMethodTable(world))
+    inf_cache = Vector{Core.Compiler.InferenceResult}() # Initially empty cache
     codegen = IdDict{CC.CodeInstance,CC.CodeInfo}()
 
     return MLIRInterpreter(world, method_table, inf_cache, codegen, inf_params, opt_params)
 end
 
 # Satisfy the AbstractInterpreter API contract
-CC.InferenceParams(interp::MLIRInterpreter) = interp.inf_params
-CC.OptimizationParams(interp::MLIRInterpreter) = interp.opt_params
-CC.get_inference_world(interp::MLIRInterpreter) = interp.world
-CC.get_inference_cache(interp::MLIRInterpreter) = interp.inf_cache
-CC.cache_owner(interp::MLIRInterpreter) = nothing
+Core.Compiler.InferenceParams(interp::MLIRInterpreter) = interp.inf_params
+Core.Compiler.OptimizationParams(interp::MLIRInterpreter) = interp.opt_params
+Core.Compiler.get_inference_world(interp::MLIRInterpreter) = interp.world
+Core.Compiler.get_inference_cache(interp::MLIRInterpreter) = interp.inf_cache
+Core.Compiler.cache_owner(interp::MLIRInterpreter) = nothing
 
 
 """
@@ -61,7 +61,7 @@ CC.cache_owner(interp::MLIRInterpreter) = nothing
 
 Override the default post-processing functionality to enforce method inlining at the Julia level
 """
-function CC.finish(interp::CC.AbstractInterpreter, opt::CC.OptimizationState, ir::CC.IRCode, caller::CC.InferenceResult)
+function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Core.Compiler.OptimizationState, ir::Core.Compiler.IRCode, caller::Core.Compiler.InferenceResult)
     (; src, linfo) = opt
     (; def, specTypes) = linfo
 
