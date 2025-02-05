@@ -1,4 +1,4 @@
-# using MLIR
+# using MLIhh
 using LLVM: LLVM
 using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
 using MLIR.IR
@@ -6,18 +6,20 @@ using MLIR
 using MLIR.Dialects: arith, func, cf
 
 include("code_mlir.jl")
+include("compiler.jl")
 
 "Macro @eval_mlir f(args...)"
 macro eval_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
 
     f = esc(first(call.args))
-    arg_types = esc(call.args )
+    arg_types = esc(call.args)
 
     quote
         eval_mlir($f, $arg_types...)
     end
 end
+
 
 "Execute function using MLIR pipeline"
 function eval_mlir(f, args...)
@@ -30,10 +32,15 @@ function eval_mlir(f, args...)
            ))
     arg_types_tuple = map(arg -> typeof(arg), args[(begin + 1):end])
 
+    # TODO; consider integrating without running type inference twice without modifying fn code_mlir
+    interp = MLIRInterpreter()
+    _, ret = only(CC.code_ircode(f, arg_types_tuple; interp=interp))
+
     # get the function ptr within the JIT
     fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
         op::IR.Operation = code_mlir(f, arg_types) 
+
         # encapsulate into a module
         mod = IR.Module(Location())
         body = IR.body(mod)
@@ -66,7 +73,7 @@ function eval_mlir(f, args...)
 
     expanded_args = Expr(:tuple, args[2:end]...)
     expanded_types = Expr(:tuple, arg_types_tuple...)
-    dynamic_call = :(ccall($fptr, Int, $(expanded_types), $(expanded_args.args...)))
+    dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args.args...)))
 
     return eval(dynamic_call)
 end

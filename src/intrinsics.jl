@@ -27,13 +27,28 @@ function cmpi_pred(predicate)
 end
 
 
+#TODO: see if its possible to extract the math_tfunc
+const calculation_intrinsics = Set([
+    arith.addi,
+    arith.subi,
+    arith.muli,
+])                                    
+
+
 # compare single operations
 function single_op_wrapper(fop)
-    return (block::Block, args::Vector{Value}; result=nothing::Union{Nothing, IR.Type}, location=Location()) ->
-    push!(block, fop(args...; result, location))
+    # TODO: check if there is a more elegant solution to keeping a separate dict
+    if fop in calculation_intrinsics
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; result, location))
+    else
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; location))
+    end
 end
 
 
+# CALCULATION_INTRINSICS
 
 # INTEGER INTRINSICS
 const integer_intrinsics_to_mlir = Dict([

@@ -2,12 +2,12 @@ using JMLIRCore
 using Test
 
 
-function add_test(a::Int, b::Int)
+function add_test(a, b)
     return a + b
 end
 
 
-function sub_test(a::Int, b::Int)
+function sub_test(a, b)
     return a - b
 end
 
@@ -36,21 +36,28 @@ end
 
    # testing equivalence of int32 and int64
    @test (@eval_mlir add_test(9223372036854775807, 10)) == (@eval add_test(9223372036854775807, 10))
-   @test (@eval_mlir add_test(123456789, 1234567890876)) == (@eval add_test(123456789, 12345678909876))
-   @test (@eval_mlir add_test(123456789, -1234567890876)) == (@eval add_test(123456789, -12345678909876))
+   @test (@eval_mlir add_test(123456789, 12345678909876)) == (@eval add_test(123456789, 12345678909876))
+   @test (@eval_mlir add_test(123456789, -12345678909876)) == (@eval add_test(123456789, -12345678909876))
 
-   #### SUB ####
-   # simple add
+   # only UInt
+   # @test (@eval_mlir add_test(UInt(5), UInt(10))) == (@eval add_test(UInt(5), UInt(10)))
+
+   # @test (@eval_mlir add_test(UInt(9223372036854775807), UInt(10))) == (@eval add_test(UInt(9223372036854775807), UInt(10)))
+   # @test (@eval_mlir add_test(UInt(123456789), UInt(12345678909876))) == (@eval add_test(UInt(123456789), UInt(12345678909876)))
+
+   # #### SUB ####
+   # # simple add
    @test (@eval_mlir sub_test(5, 10)) == (@eval sub_test(5, 10))
    @test (@eval_mlir sub_test(5, -10)) == (@eval sub_test(5, -10))
 
-   # testing equivalence of int32 and int64
+   # # testing equivalence of int32 and int64
    @test (@eval_mlir sub_test(9223372036854775807, 10)) == (@eval sub_test(9223372036854775807, 10))
-   @test (@eval_mlir sub_test(123456789, 1234567890876)) == (@eval sub_test(123456789, 12345678909876))
-   @test (@eval_mlir sub_test(123456789, -1234567890876)) == (@eval sub_test(123456789, -12345678909876))
+   @test (@eval_mlir sub_test(123456789, 12345678909876)) == (@eval sub_test(123456789, 12345678909876))
+   @test (@eval_mlir sub_test(123456789, -12345678909876)) == (@eval sub_test(123456789, -12345678909876))
 
 
    ### CONTROL FLOW ###
    @test (@eval_mlir multi_route_node(5, 10)) == (@eval multi_route_node(5, 10)) 
+   @test (@eval_mlir multi_route_node(10, 5)) == (@eval multi_route_node(10, 5)) 
 
 end
