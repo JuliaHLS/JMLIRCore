@@ -26,6 +26,11 @@ function cmpi_pred(predicate)
   end
 end
 
+# ops = [
+#     (:add_int, (arith.addi,)),
+#     (:sub_int, (arith.subi,)),
+# ]
+
 
 #TODO: see if its possible to extract the math_tfunc
 const calculation_intrinsics = Set([
@@ -34,11 +39,16 @@ const calculation_intrinsics = Set([
     arith.muli,
 ])                                    
 
+# generic check is fop is registered as a math function
+function is_math(fop)::Bool
+    idx = reinterpret(Int32, fop) + 1
+    return CC.T_IFUNC[idx] == Core.Compiler.math_tfunc
+end
 
 # compare single operations
 function single_op_wrapper(fop)
-    # TODO: check if there is a more elegant solution to keeping a separate dict
-    if fop in calculation_intrinsics
+    # if fop is a math operation, it needs to forward the return type
+    if is_math(fop)
         return (block::Block, args::Vector{Value}; result, location=Location()) ->
         push!(block, fop(args...; result, location))
     else
