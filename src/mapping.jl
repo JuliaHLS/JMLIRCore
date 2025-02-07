@@ -32,6 +32,7 @@ const operations = Dict([
   Base.add_float => arith.addf, 
   Base.sub_float => arith.subf,
   Base.mul_float => arith.mulf,
+  Base.div_float => arith.divf,
 ])
 
 
