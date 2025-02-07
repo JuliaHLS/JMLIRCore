@@ -22,9 +22,13 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
     # store type as IR.Type
     type = IR.Type(val_type)
     
+
     # extract metadata
     fop! = intrinsic_to_mlir(called_func)
-    args = get_value.(inst.args[(begin+1):end], context, blocks)
+
+    # filter out unwanted arguments
+    extracted_args = filter(arg -> !(arg isa DataType), inst.args[(begin+1):end])
+    args = get_value.(extracted_args, context, blocks)
 
     # TODO: investigate the feasibility of reintroducing location in Julia v1.12
     # location = Location(string(context.line.file), context.line.line, 0)

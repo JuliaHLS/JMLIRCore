@@ -33,6 +33,7 @@ const operations = Dict([
   Base.sub_float => arith.subf,
   Base.mul_float => arith.mulf,
   Base.div_float => arith.divf,
+  Base.sitofp    => arith.sitofp,
 ])
 
 
@@ -55,6 +56,5 @@ const custom_intrinsics = Dict([
     )
     return push!(block, arith.xori(arg, ones; location))
   end,
-   
 ])
 

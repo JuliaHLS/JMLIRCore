@@ -11,6 +11,16 @@ function sub_test(a, b)
     return a - b
 end
 
+
+function mul_test(a, b)
+    return a * b
+end
+
+
+function div_test(a, b)
+    return a / b
+end
+
 ## produces two basic blocks that merge at the same node
 function multi_route_node(A, B)
 	result = 0
@@ -54,6 +64,19 @@ end
    @test (@eval_mlir sub_test(9223372036854775807, 10)) == (@eval sub_test(9223372036854775807, 10))
    @test (@eval_mlir sub_test(123456789, 12345678909876)) == (@eval sub_test(123456789, 12345678909876))
    @test (@eval_mlir sub_test(123456789, -12345678909876)) == (@eval sub_test(123456789, -12345678909876))
+
+
+   # #### MUL ####
+   # # simple add
+   @test (@eval_mlir mul_test(5, 10)) == (@eval mul_test(5, 10))
+   @test (@eval_mlir mul_test(5, -10)) == (@eval mul_test(5, -10))
+
+
+   # #### DIV ####
+   # # simple add
+   @test (@eval_mlir div_test(5, 10)) == (@eval div_test(5, 10))
+   @test (@eval_mlir div_test(5, -10)) == (@eval div_test(5, -10))
+
 
 
    ### CONTROL FLOW ###
