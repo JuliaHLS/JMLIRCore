@@ -17,7 +17,7 @@ const uge = 9
 end
 
 # Julia Operations -> MLIR Operations
-operations = Dict([
+const operations = Dict([
   Base.add_int => arith.addi,
   Base.sub_int => arith.subi,
   Base.mul_int => arith.muli,
@@ -34,13 +34,13 @@ operations = Dict([
 
 
 # Julia Predicates -> Predicate enumeration
-int_predicate = Dict([
+const int_predicate = Dict([
     Base.sle_int => Predicates.sle,
     Base.slt_int => Predicates.slt,
     Base.:(===)  => Predicates.eq,
 ])
 
-float_predicate = Dict([
+const float_predicate = Dict([
     Base.ne_float => Predicates.ne,
 ])
 
