@@ -1,10 +1,3 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
 include("nodes.jl")
 
 ## Basic Block Preprocessing
@@ -19,6 +12,7 @@ function prepare_block(ir, bb)
     inst isa Core.PhiNode || continue
 
     type = stmt[:type]
+
     IR.push_argument!(b, IR.Type(type))
   end
 
@@ -71,7 +65,6 @@ function preprocess_code_blocks(ir, types)
 
   # preprocess first block
   entry_block = blocks[begin]
-
 
   # add argtypes
   for argtype in types.parameters

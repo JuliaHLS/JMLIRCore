@@ -1,15 +1,21 @@
 # using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
 include("intrinsics.jl")
 include("blocks.jl")
 include("expressions.jl")
 include("MLIRInterpreter.jl")
 
+
+function simple_type_conversion(arg)
+    type = Core.Typeof(arg)
+    
+    if type == UInt64
+        return Int64
+    elseif type == UInt32
+        return Int32
+    else
+        return type
+    end
+end
 
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
@@ -20,7 +26,7 @@ macro code_mlir(call)
         Expr(
             :curly,
             Tuple,
-            map(arg -> :($(Core.Typeof)($arg)), call.args[(begin + 1):end])...,
+            map(arg -> :($(simple_type_conversion)($arg)), call.args[(begin+1):end])...,
         ),
     )
 
@@ -34,92 +40,95 @@ macro code_mlir(call)
 end
 
 
+
 "Translate typed IR into MLIR"
 function code_mlir(f, types)
-  ### Setup the context ###
-  
-  if !IR._has_context()
-      ctx = IR.Context()
-  end
-  
-  # load dialects
-  for dialect in (:func, :cf)
-    IR.register_dialect!(IR.DialectHandle(dialect))
-  end
-  IR.load_all_available_dialects()
+    ### Setup the context ###
+
+    if !IR._has_context()
+        ctx = IR.Context()
+    end
+
+    # load dialects
+    for dialect in (:func, :cf)
+        IR.register_dialect!(IR.DialectHandle(dialect))
+    end
+    IR.load_all_available_dialects()
 
 
-  ### Initialise abstract interpreter ###
-  interp = MLIRInterpreter()
-  
-  ### Preprocess ###
-  ir, ret = only(CC.code_ircode(f, types; interp=interp))
-  @assert first(ir.argtypes) isa Core.Const
-  result_types = [IR.Type(ret)]
+    ### Initialise abstract interpreter ###
+    interp = MLIRInterpreter()
 
-  # values
-  values = Vector{Value}(undef, length(ir.stmts))
+    ### Preprocess ###
+    ir, ret = only(CC.code_ircode(f, types; interp=interp))
+    @assert first(ir.argtypes) isa Core.Const
 
-  # gather basic blocks
-  entry_block, block_array = preprocess_code_blocks(ir, types)
-  current_block = entry_block
+    # convert UInt to Int (generic type required for MLIR)
 
-  # set up context variables
-  context = Context(
-    ir,
-    values,
-    0,
-    Dict{Int, Vector{Any}}(),
-    nothing,
-    0,
-    nothing,
-  )
+    result_types = [IR.Type(ret)]
 
-  blocks = Blocks(
-    nothing,
-    current_block,
-    entry_block,
-    block_array,
-    nothing
-  )
+    # values
+    values = Vector{Value}(undef, length(ir.stmts))
 
-  
-  ### Process into blocks ###
-  process_blocks(blocks, context)
+    # gather basic blocks
+    entry_block, block_array = preprocess_code_blocks(ir, types)
+    current_block = entry_block
 
-  region = Region()
-  for b in blocks.blocks
-    push!(region, b)
-  end
-  
+    # set up context variables
+    context = Context(
+        ir,
+        values,
+        0,
+        Dict{Int,Vector{Any}}(),
+        nothing,
+        0,
+        nothing,
+    )
 
-  ### Format output ###
-  input_types = IR.Type[
-    IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
-  ]
+    blocks = Blocks(
+        nothing,
+        current_block,
+        entry_block,
+        block_array,
+        nothing
+    )
 
 
-  # extract function metadata
-  f_name = nameof(f)
-  ftype = IR.FunctionType(input_types, result_types)
+    ### Process into blocks ###
+    process_blocks(blocks, context)
 
-  # create mlir operation (function call)
-  op = IR.create_operation(
-    "func.func",
-    Location();
-    attributes=[
-      IR.NamedAttribute("sym_name", IR.Attribute(string(f_name))),
-      IR.NamedAttribute("function_type", IR.Attribute(ftype)),
-    ],
-    owned_regions=Region[region],
-    result_inference=false,
-  )
+    region = Region()
+    for b in blocks.blocks
+        push!(region, b)
+    end
 
 
-  ### Verify validity of the MLIR generated ###
-  IR.verifyall(op)
+    ### Format output ###
+    input_types = IR.Type[
+        IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
+    ]
+
+    # extract function metadata
+    f_name = nameof(f)
+    ftype = IR.FunctionType(input_types, result_types)
+
+    # create mlir operation (function call)
+    op = IR.create_operation(
+        "func.func",
+        Location();
+        attributes=[
+            IR.NamedAttribute("sym_name", IR.Attribute(string(f_name))),
+            IR.NamedAttribute("function_type", IR.Attribute(ftype)),
+        ],
+        owned_regions=Region[region],
+        result_inference=false,
+    )
 
 
-  ### return result ###
-  return op 
+    ### Verify validity of the MLIR generated ###
+    IR.verifyall(op)
+
+
+    ### return result ###
+    return op
 end

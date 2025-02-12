@@ -1,39 +1,39 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
 include("code_mlir.jl")
+include("compiler.jl")
 
 "Macro @eval_mlir f(args...)"
 macro eval_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
 
     f = esc(first(call.args))
-    arg_types = esc(call.args )
+    arg_types = esc(call.args)
 
     quote
         eval_mlir($f, $arg_types...)
     end
 end
 
+
 "Execute function using MLIR pipeline"
 function eval_mlir(f, args...)
     # preprocess arguments
-    # arg_types = Tuple(map(arg-> Core.Typeof(arg), args[2:end]))# Tuple{Core.Typeof(5), Core.Typeof(10)}
     arg_types = eval(Expr(
             :curly,
             Tuple,
-            map(arg -> :($(Core.Typeof)($arg)), args[(begin + 1):end])...,
+            map(arg -> :($(simple_type_conversion)($arg)), args[(begin + 1):end])...,
            ))
-    arg_types_tuple = map(arg -> typeof(arg), args[(begin + 1):end])
+
+    processed_arg_types_tuple = map(arg -> simple_type_conversion(eval(arg)), args[(begin + 1):end])
+
+    # TODO; consider integrating without running type inference twice without modifying fn code_mlir (check the return types function)
+    interp = MLIRInterpreter()
+    _, ret = only(CC.code_ircode(f, processed_arg_types_tuple; interp=interp))
 
     # get the function ptr within the JIT
     fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
         op::IR.Operation = code_mlir(f, arg_types) 
+
         # encapsulate into a module
         mod = IR.Module(Location())
         body = IR.body(mod)
@@ -64,9 +64,9 @@ function eval_mlir(f, args...)
         MLIR.API.mlirExecutionEngineLookup(jit, nameof(f))
     end
 
-    expanded_args = Expr(:tuple, args[2:end]...)
-    expanded_types = Expr(:tuple, arg_types_tuple...)
-    dynamic_call = :(ccall($fptr, Int, $(expanded_types), $(expanded_args.args...)))
+    expanded_args = eval(Expr(:tuple, args[2:end]...))
+    expanded_types = Expr(:tuple, processed_arg_types_tuple...)
+    dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
 
     return eval(dynamic_call)
 end

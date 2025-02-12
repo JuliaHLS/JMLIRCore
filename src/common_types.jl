@@ -31,4 +31,14 @@ Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
 
 
-const ScalarTypes = Union{Bool,Int64,Int32,Float32,Float64}
+ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64}
+
+function type_convert(ir)
+    for i in 1:length(ir.argtypes)
+        if ir.argtypes[i] == UInt64
+            ir.argtypes[i] = Int64
+        end
+    end
+end
+
+# replace UInt with Int

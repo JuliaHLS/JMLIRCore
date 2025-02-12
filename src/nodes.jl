@@ -1,10 +1,3 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
 include("common_types.jl")
 
 function postfix_nodes(context, blocks)

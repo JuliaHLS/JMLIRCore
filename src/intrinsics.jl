@@ -1,80 +1,83 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
+include("common_types.jl")
+include("mapping.jl")
 using MLIR
-using MLIR.Dialects: arith, func, cf
 
-module Predicates
-const eq = 0
-const ne = 1
-const slt = 2
-const sle = 3
-const sgt = 4
-const sge = 5
-const ult = 6
-const ule = 7
-const ugt = 8
-const uge = 9
+# generic check is fop is registered as a math function
+function is_math(fop)::Bool
+    idx = reinterpret(Int32, fop) + 1
+    return Core.Compiler.T_IFUNC[idx][end] == Core.Compiler.math_tfunc
 end
+
+
+# generic check is fop is registered as a math function
+function is_conversion(fop)::Bool
+    idx = reinterpret(Int32, fop) + 1
+    return Core.Compiler.T_IFUNC[idx][end] == Core.Compiler.conversion_tfunc
+end
+
+
+function is_shift(fop)::Bool
+    idx = reinterpret(Int32, fop) + 1
+    return Core.Compiler.T_IFUNC[idx][end] == Core.Compiler.shift_tfunc
+end
+
+
+function is_cmp(fop)::Bool
+    idx = reinterpret(Int32, fop) + 1
+    return Core.Compiler.T_IFUNC[idx][end] == Core.Compiler.cmp_tfunc
+end
+
 
 
 # process comparator predicates
-function cmpi_pred(predicate)
-  function (ops...; location=Location())
-    return arith.cmpi(ops...; result=IR.Type(Bool), predicate, location)
-  end
+function cmpi_pred(predicate, isFloat)
+    if isFloat
+        function (ops...; location=Location())
+          return arith.cmpf(ops...; result=IR.Type(Bool), predicate, location)
+        end
+    else
+        function (ops...; location=Location())
+          return arith.cmpi(ops...; result=IR.Type(Bool), predicate, location)
+        end
+    end
 end
 
 
-# compare single operations
-function single_op_wrapper(fop)
-  return (block::Block, args::Vector{Value}; location=Location()) ->
-    push!(block, fop(args...; location))
+# insert single operations
+function single_op_wrapper(fop, target::Function)
+    # if fop is a math operation, it needs to forward the return type
+    if is_math(target)
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; result, location))
+    elseif is_shift(target)
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; result, location))
+    elseif is_conversion(target)
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; out=result, location))       
+    elseif is_cmp(target)
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; location))       
+   else
+        return (block::Block, args::Vector{Value}; result, location=Location()) ->
+        push!(block, fop(args...; location))
+    end
 end
-
-
-
-# INTEGER INTRINSICS
-const integer_intrinsics_to_mlir = Dict([
-  Base.add_int => single_op_wrapper(arith.addi),
-  Base.sub_int => single_op_wrapper(arith.subi),
-  Base.sle_int => single_op_wrapper(cmpi_pred(Predicates.sle)),
-  Base.slt_int => single_op_wrapper(cmpi_pred(Predicates.slt)),
-  Base.mul_int => single_op_wrapper(arith.muli),
-  Base.not_int => function (block, args; location=Location())
-    arg = only(args)
-    mT = IR.type(arg)
-    T = IR.julia_type(mT)
-    ones = IR.result(
-      push!(block, arith.constant(; value=typemax(UInt64) % T, result=mT, location)),
-    )
-    return push!(block, arith.xori(arg, ones; location))
-  end,
-
-])
-
-# OPERATOR INTRINSICS
-const operator_intrinsics_to_mlir = Dict([
-  Base.:(===) => single_op_wrapper(cmpi_pred(Predicates.eq)),
-])
-
 
 
 ## conversion to MLIR
 
+# map Julia intrinsics to MLIR
 function intrinsic_to_mlir(target_function)
-  # map the intrinsic
+    if target_function in keys(operations)                        # map operations
+        return single_op_wrapper(operations[target_function], target_function)
+    elseif target_function in keys(int_predicate)                     # operator mappings
+        return single_op_wrapper(cmpi_pred(int_predicate[target_function], false), target_function)
+    elseif target_function in keys(float_predicate)                     # operator mappings
+        return single_op_wrapper(cmpi_pred(float_predicate[target_function], true), target_function)
+     elseif target_function in keys(custom_intrinsics)             # custom intrinsics
+        return custom_intrinsics[target_function]
+    end
 
-  # integer mappings
-  if target_function in keys(integer_intrinsics_to_mlir)
-    return integer_intrinsics_to_mlir[target_function]
-
-  # operator mappings
-  elseif target_function in keys(operator_intrinsics_to_mlir)
-    return operator_intrinsics_to_mlir[target_function]
-
-  end
-
-  error("Intrinsic cannot be mapped to MLIR: $target_function")
+    error("Intrinsic cannot be mapped to MLIR: $target_function. Please update 'mapping.jl' create a Pull Request")
 end
