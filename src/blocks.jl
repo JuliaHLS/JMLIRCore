@@ -12,6 +12,7 @@ function prepare_block(ir, bb)
     inst isa Core.PhiNode || continue
 
     type = stmt[:type]
+
     IR.push_argument!(b, IR.Type(type))
   end
 
@@ -48,7 +49,6 @@ function get_value(x, context::Context, blocks::Blocks)::Value
   elseif x isa Core.Argument
     IR.argument(blocks.entry_block, x.n - 1)
   elseif x isa ScalarTypes 
-    println("pushing: ", x)
     IR.result(push!(blocks.current_block, arith.constant(; value=x)))
   else
     error("could not use value $x inside MLIR")
@@ -65,7 +65,6 @@ function preprocess_code_blocks(ir, types)
 
   # preprocess first block
   entry_block = blocks[begin]
-
 
   # add argtypes
   for argtype in types.parameters

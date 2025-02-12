@@ -17,17 +17,17 @@ end
 "Execute function using MLIR pipeline"
 function eval_mlir(f, args...)
     # preprocess arguments
-    # arg_types = Tuple(map(arg-> Core.Typeof(arg), args[2:end]))# Tuple{Core.Typeof(5), Core.Typeof(10)}
     arg_types = eval(Expr(
             :curly,
             Tuple,
-            map(arg -> :($(Core.Typeof)($arg)), args[(begin + 1):end])...,
+            map(arg -> :($(simple_type_conversion)($arg)), args[(begin + 1):end])...,
            ))
-    arg_types_tuple = map(arg -> typeof(arg), args[(begin + 1):end])
+
+    processed_arg_types_tuple = map(arg -> simple_type_conversion(eval(arg)), args[(begin + 1):end])
 
     # TODO; consider integrating without running type inference twice without modifying fn code_mlir (check the return types function)
     interp = MLIRInterpreter()
-    _, ret = only(CC.code_ircode(f, arg_types_tuple; interp=interp))
+    _, ret = only(CC.code_ircode(f, processed_arg_types_tuple; interp=interp))
 
     # get the function ptr within the JIT
     fptr = IR.context!(IR.Context()) do
@@ -64,9 +64,9 @@ function eval_mlir(f, args...)
         MLIR.API.mlirExecutionEngineLookup(jit, nameof(f))
     end
 
-    expanded_args = Expr(:tuple, args[2:end]...)
-    expanded_types = Expr(:tuple, arg_types_tuple...)
-    dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args.args...)))
+    expanded_args = eval(Expr(:tuple, args[2:end]...))
+    expanded_types = Expr(:tuple, processed_arg_types_tuple...)
+    dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
 
     return eval(dynamic_call)
 end

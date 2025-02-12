@@ -5,6 +5,18 @@ include("expressions.jl")
 include("MLIRInterpreter.jl")
 
 
+function simple_type_conversion(arg)
+    type = Core.Typeof(arg)
+    
+    if type == UInt64
+        return Int64
+    elseif type == UInt32
+        return Int32
+    else
+        return type
+    end
+end
+
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
@@ -14,7 +26,7 @@ macro code_mlir(call)
         Expr(
             :curly,
             Tuple,
-            map(arg -> :($(Core.Typeof)($arg)), call.args[(begin+1):end])...,
+            map(arg -> :($(simple_type_conversion)($arg)), call.args[(begin+1):end])...,
         ),
     )
 
@@ -50,6 +62,9 @@ function code_mlir(f, types)
     ### Preprocess ###
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
+
+    # convert UInt to Int (generic type required for MLIR)
+
     result_types = [IR.Type(ret)]
 
     # values
@@ -92,15 +107,6 @@ function code_mlir(f, types)
     input_types = IR.Type[
         IR.type(IR.argument(entry_block, i)) for i in 1:IR.nargs(entry_block)
     ]
-
-    println("GOT FOLLOWING: ", (IR.argument(entry_block, 1)))
-
-    for i in 1:IR.nargs(entry_block)
-        println("t: ", IR.type(IR.argument(entry_block, i)))
-    end
-
-    println("got input types: ", input_types)
-
 
     # extract function metadata
     f_name = nameof(f)
