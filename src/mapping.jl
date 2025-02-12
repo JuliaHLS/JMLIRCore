@@ -16,12 +16,14 @@ const ugt = 8
 const uge = 9
 end
 
-
 # Julia Operations -> MLIR Operations
-const operations = Dict([
+operations = Dict([
   Base.add_int => arith.addi,
   Base.sub_int => arith.subi,
   Base.mul_int => arith.muli,
+  Base.lshr_int  => arith.shrui,
+  Base.trunc_int => arith.trunci,
+  Base.checked_srem_int => arith.remsi,
 
   Base.add_float => arith.addf, 
   Base.sub_float => arith.subf,
@@ -32,12 +34,15 @@ const operations = Dict([
 
 
 # Julia Predicates -> Predicate enumeration
-const predicate = Dict([
+int_predicate = Dict([
     Base.sle_int => Predicates.sle,
     Base.slt_int => Predicates.slt,
     Base.:(===)  => Predicates.eq,
 ])
 
+float_predicate = Dict([
+    Base.ne_float => Predicates.ne,
+])
 
 # Edge-case intrinsics -> MLIR (complicated cases)
 const custom_intrinsics = Dict([
