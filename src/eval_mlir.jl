@@ -1,10 +1,3 @@
-# using MLIhh
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
 include("code_mlir.jl")
 include("compiler.jl")
 
@@ -32,7 +25,7 @@ function eval_mlir(f, args...)
            ))
     arg_types_tuple = map(arg -> typeof(arg), args[(begin + 1):end])
 
-    # TODO; consider integrating without running type inference twice without modifying fn code_mlir
+    # TODO; consider integrating without running type inference twice without modifying fn code_mlir (check the return types function)
     interp = MLIRInterpreter()
     _, ret = only(CC.code_ircode(f, arg_types_tuple; interp=interp))
 

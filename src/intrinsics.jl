@@ -1,11 +1,6 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
+include("common_types.jl")
 include("mapping.jl")
+using MLIR
 
 # generic check is fop is registered as a math function
 function is_math(fop)::Bool

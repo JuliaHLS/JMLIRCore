@@ -1,10 +1,4 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
+include("common_types.jl")
 
 function process_expr(inst::Expr, context::Context, blocks::Blocks)
   if Meta.isexpr(inst, :call)

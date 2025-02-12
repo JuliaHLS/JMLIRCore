@@ -1,10 +1,3 @@
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
-using MLIR.Dialects: arith, func, cf
-
 include("nodes.jl")
 
 ## Basic Block Preprocessing
@@ -55,6 +48,7 @@ function get_value(x, context::Context, blocks::Blocks)::Value
   elseif x isa Core.Argument
     IR.argument(blocks.entry_block, x.n - 1)
   elseif x isa ScalarTypes 
+    println("pushing: ", x)
     IR.result(push!(blocks.current_block, arith.constant(; value=x)))
   else
     error("could not use value $x inside MLIR")

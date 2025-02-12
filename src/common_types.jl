@@ -32,3 +32,6 @@ Base.broadcastable(b::Blocks) = Ref(b)
 
 
 const ScalarTypes = Union{Bool,UInt64,Int64,UInt32,Int32,Float32,Float64}
+
+
+# replace UInt with Int

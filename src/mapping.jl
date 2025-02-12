@@ -1,10 +1,4 @@
 # Define the mapping from Julia IR -> MLIR Operations
-
-# using MLIR
-using LLVM: LLVM
-using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
-using MLIR.IR
-using MLIR
 using MLIR.Dialects: arith, func, cf
 
 
