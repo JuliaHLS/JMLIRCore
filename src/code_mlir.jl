@@ -44,14 +44,16 @@ end
 "Translate typed IR into MLIR"
 function code_mlir(f, types)
     ### Setup the context ###
+    println("Got types: ", types)
 
     if !IR._has_context()
         ctx = IR.Context()
     end
 
     # load dialects
-    for dialect in (:func, :cf)
+    for dialect in (:func, :cf, :memref, :linalg)
         IR.register_dialect!(IR.DialectHandle(dialect))
+        println("loading: ", dialect)
     end
     IR.load_all_available_dialects()
 

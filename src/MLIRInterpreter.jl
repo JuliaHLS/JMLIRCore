@@ -65,39 +65,33 @@ function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Co
     (; src, linfo) = opt
     (; def, specTypes) = linfo
 
+    println("HERE")
+
     # set default for no inlining
     force_noinline = false
 
     # compute inlining and other related optimizations
     result = caller.result
-    @assert !(result isa CC.LimitedAccuracy)
-    result = CC.widenslotwrapper(result)
+    # result = CC.widenslotwrapper(result)
 
     opt.ir = ir
 
-    # determine edgecases and cache the inlineability
-    sig = CC.unwrap_unionall(specTypes)
-    if !(isa(sig, DataType) && sig.name === Tuple.name)
-        force_noinline = true
-    end
-    if !CC.is_declared_inline(src) && result === CC.Bottom
-        force_noinline = true
-    end
-
+    # # determine edgecases and cache the inlineability
+    # sig = CC.unwrap_unionall(specTypes)
+    # if !(isa(sig, DataType) && sig.name === Tuple.name)
+    #     force_noinline = true
+    # end
+    # if !CC.is_declared_inline(src) && result === CC.Bottom
+    #     force_noinline = true
+    # end
+    #
     # determine if we inline the method
     if isa(def, Method)
-        CC.set_inlineable!(src, !force_noinline)
+        println("HERE2")
+        Core.Compiler.set_inlineable!(src, false)
     end
 
     return nothing
 end
 
-
-function test(a, b)
-    if(a < 0)
-        return 0
-    else
-        return a + b + test(a, b - 1)
-    end
-end
 
