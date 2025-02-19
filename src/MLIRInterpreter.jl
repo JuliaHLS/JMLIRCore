@@ -76,15 +76,15 @@ function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Co
 
     opt.ir = ir
 
-    # # determine edgecases and cache the inlineability
-    # sig = CC.unwrap_unionall(specTypes)
-    # if !(isa(sig, DataType) && sig.name === Tuple.name)
-    #     force_noinline = true
-    # end
-    # if !CC.is_declared_inline(src) && result === CC.Bottom
-    #     force_noinline = true
-    # end
-    #
+#     # # determine edgecases and cache the inlineability
+#     sig = CC.unwrap_unionall(specTypes)
+#     if !(isa(sig, DataType) && sig.name === Tuple.name)
+#         force_noinline = true
+#     end
+#     if !CC.is_declared_inline(src) && result === CC.Bottom
+#         force_noinline = true
+#     end
+
     # determine if we inline the method
     if isa(def, Method)
         println("HERE2")

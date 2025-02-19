@@ -5,18 +5,6 @@ include("expressions.jl")
 include("MLIRInterpreter.jl")
 
 
-function simple_type_conversion(arg)
-    type = Core.Typeof(arg)
-    
-    if type == UInt64
-        return Int64
-    elseif type == UInt32
-        return Int32
-    else
-        return type
-    end
-end
-
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
@@ -26,7 +14,7 @@ macro code_mlir(call)
         Expr(
             :curly,
             Tuple,
-            map(arg -> :($(simple_type_conversion)($arg)), call.args[(begin+1):end])...,
+            map(arg -> :($arg), call.args[(begin+1):end])...,
         ),
     )
 
@@ -66,6 +54,8 @@ function code_mlir(f, types)
     @assert first(ir.argtypes) isa Core.Const
 
     # convert UInt to Int (generic type required for MLIR)
+    
+    println("Processing ret type: ", typeof(ret) , " with val: ", ret)
 
     result_types = [IR.Type(ret)]
 

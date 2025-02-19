@@ -4,6 +4,7 @@ using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
 using MLIR.IR
 using MLIR
 using MLIR.Dialects: arith, func, cf
+using StaticArrays
 
 include("compiler.jl")
 
@@ -33,12 +34,31 @@ Base.broadcastable(b::Blocks) = Ref(b)
 
 ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64}
 
-function type_convert(ir)
-    for i in 1:length(ir.argtypes)
-        if ir.argtypes[i] == UInt64
-            ir.argtypes[i] = Int64
-        end
-    end
+# Extend MLIR.jl
+function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
+    return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
 end
 
-# replace UInt with Int
+# # Extend MLIR.jl
+# function IR.Type(T::Core.Type{<:Integer}; context::IR.Context=context())
+#     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
+# end
+
+# function IR.Type(T::Core.Type{<:Signed}; context::IR.Context=context())
+#     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
+# end
+
+
+## StaticArrays 
+function IR.Type(T::Core.Type{<:SVector}; context::IR.Context=context())
+    dims::Vector{Int64} = collect(T.parameters[1].parameters)
+    type = IR.Type(T.parameters[2])
+
+    # TODO: check 0 is the correct memspace cfg
+    memspace_cfg = IR.Attribute(0)
+
+    return IR.MemRefType(type, dims, memspace_cfg)
+end
+
+
+
