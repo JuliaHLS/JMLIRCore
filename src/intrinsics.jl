@@ -43,6 +43,14 @@ function cmpi_pred(predicate, isFloat)
 end
 
 
+function linalg_op()
+    function (ops...; result, location=Location())
+        println("adding linalg add with ops: ", ops)
+        return linalg.add(ops...; result_tensors=[result], region=Region(), location)
+    end
+end
+
+
 # insert single operations
 function single_op_wrapper(fop, target::Function)
     # if fop is a math operation, it needs to forward the return type
@@ -75,9 +83,16 @@ function intrinsic_to_mlir(target_function)
         return single_op_wrapper(cmpi_pred(int_predicate[target_function], false), target_function)
     elseif target_function in keys(float_predicate)                     # operator mappings
         return single_op_wrapper(cmpi_pred(float_predicate[target_function], true), target_function)
-     elseif target_function in keys(custom_intrinsics)             # custom intrinsics
+    elseif target_function in keys(custom_intrinsics)             # custom intrinsics
         return custom_intrinsics[target_function]
+    else
+        println("adding linalg_op")
+        fop = linalg_op()
+        return (block::Block, args; result, location=Location()) ->
+        push!(block, fop(args...; result=result, location))
     end
+
+    # println("ismath: ", is_math(target_function))
 
     error("Intrinsic cannot be mapped to MLIR: $target_function. Please update 'mapping.jl' create a Pull Request")
 end

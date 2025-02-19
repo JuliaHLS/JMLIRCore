@@ -21,8 +21,17 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         fop! = intrinsic_to_mlir(called_func)
 
         # filter out unwanted arguments
-        extracted_args = filter(arg -> !(arg isa DataType), inst.args[(begin+1):end])
+        extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
+
         args = get_value.(extracted_args, context, blocks)
+
+
+        if inst.args[(begin+1):end][1] isa GlobalRef
+            println("modifying to a vector")
+            args = map(x -> [x], args)
+        end
+
+
 
         # TODO: investigate the feasibility of reintroducing location in Julia v1.12
         # location = Location(string(context.line.file), context.line.line, 0)
