@@ -54,10 +54,7 @@ function IR.Type(T::Core.Type{<:SVector}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
     type = IR.Type(T.parameters[2])
 
-    # TODO: check 0 is the correct memspace cfg
-    memspace_cfg = IR.Attribute(0)
-
-    return IR.MemRefType(type, dims, memspace_cfg)
+    return IR.TensorType(dims, type)
 end
 
 
