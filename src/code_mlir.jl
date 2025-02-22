@@ -14,7 +14,7 @@ macro code_mlir(call)
         Expr(
             :curly,
             Tuple,
-            map(arg -> :($arg), call.args[(begin+1):end])...,
+            map(arg -> :($(Core.Typeof)($arg)), call.args[(begin+1):end])...,
         ),
     )
 
