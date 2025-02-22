@@ -20,7 +20,7 @@ macro code_mlir(call)
 
 
     # force get a new by default (if we call code_mlir via the macro)
-    ctx = IR.Context()
+    # ctx = IR.Context()
 
     quote
         code_mlir($f, $args)
@@ -30,21 +30,26 @@ end
 
 
 "Translate typed IR into MLIR"
-function code_mlir(f, types)
+function code_mlir(f, types; ctx=IR.Context())
     ### Setup the context ###
     println("Got types: ", types)
 
-    if !IR._has_context()
-        ctx = IR.Context()
-    end
+#     if !IR._has_context()
+#         ctx = IR.Context()
+#     end
 
     # load dialects
+    
+
     for dialect in (:func, :cf, :memref, :linalg)
         IR.register_dialect!(IR.DialectHandle(dialect))
         println("loading: ", dialect)
     end
     IR.load_all_available_dialects()
 
+
+    #TODO: add registration handle for TOSA dialect
+    IR.allow_unregistered_dialects!(true; context=ctx)
 
     ### Initialise abstract interpreter ###
     interp = MLIRInterpreter()

@@ -23,13 +23,17 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         # filter out unwanted arguments
         extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
 
+        println("TYPE: ", typeof(extracted_args[begin]))
+
         args = get_value.(extracted_args, context, blocks)
 
 
-        if inst.args[(begin+1):end][1] isa GlobalRef
-            println("modifying to a vector")
-            args = map(x -> [x], args)
-        end
+        # if inst.args[(begin+1):end][1] isa GlobalRef
+        #     println("modifying to a vector")
+        #     args = map(x -> [x], args)
+        # end
+
+        println("Processing with args: ", args)
 
 
 
