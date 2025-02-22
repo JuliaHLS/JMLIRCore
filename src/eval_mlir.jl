@@ -20,10 +20,10 @@ function eval_mlir(f, args...)
     arg_types = eval(Expr(
             :curly,
             Tuple,
-            map(arg -> :($arg), args[(begin + 1):end])...,
+            map(arg -> :($(Core.Typeof)($arg)), args[(begin + 1):end])...,
            ))
 
-    processed_arg_types_tuple = map(arg -> eval(arg), args[(begin + 1):end])
+    processed_arg_types_tuple = map(arg -> Core.Typeof(eval(arg)), args[(begin + 1):end])
 
     # TODO; consider integrating without running type inference twice without modifying fn code_mlir (check the return types function)
     interp = MLIRInterpreter()
