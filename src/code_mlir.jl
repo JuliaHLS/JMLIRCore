@@ -30,26 +30,28 @@ end
 
 
 "Translate typed IR into MLIR"
-function code_mlir(f, types; ctx=IR.Context())
+function code_mlir(f, types)
     ### Setup the context ###
     println("Got types: ", types)
 
-#     if !IR._has_context()
-#         ctx = IR.Context()
-#     end
+    if !IR._has_context()
+        ctx = IR.Context()
+    end
 
     # load dialects
     
 
-    for dialect in (:func, :cf, :memref, :linalg)
+    for dialect in (:func, :cf, :memref, :linalg, :tensor)
         IR.register_dialect!(IR.DialectHandle(dialect))
         println("loading: ", dialect)
     end
+
+    println("num registered dialects ", IR.num_registered_dialects())
     IR.load_all_available_dialects()
 
 
     #TODO: add registration handle for TOSA dialect
-    IR.allow_unregistered_dialects!(true; context=ctx)
+    IR.allow_unregistered_dialects!(true)
 
     ### Initialise abstract interpreter ###
     interp = MLIRInterpreter()
