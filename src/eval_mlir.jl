@@ -155,6 +155,14 @@ function eval_mlir(f, args...)
         mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --lower-affine -o temp_out.mlir`, ctx)
         op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
+
+        mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-scf-to-cf -o temp_out.mlir`, ctx)
+        op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
+
+
+        mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-to-llvm -o temp_out.mlir`, ctx)
+        op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
+
         # mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-to-llvm -o temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
@@ -174,24 +182,24 @@ function eval_mlir(f, args...)
         # lower mlir to linalg
 
         # register LLVM lowering passes
-        MLIR.API.mlirRegisterAllPasses()
-        MLIR.API.mlirRegisterAllLLVMTranslations(IR.context())
-        MLIR.API.mlirRegisterConversionConvertToLLVMPass()
-        MLIR.API.mlirRegisterConversionTosaToSCF()
-        MLIR.API.mlirRegisterConversionConvertLinalgToStandard()
-        # MLIR.API.mlirRegisterLinalgLinalgDetensorize()
-        MLIR.API.mlirRegisterLinalgLinalgBufferize()
-        MLIR.API.mlirRegisterConversionSCFToControlFlow()
+        # MLIR.API.mlirRegisterAllPasses()
+        # MLIR.API.mlirRegisterAllLLVMTranslations(IR.context())
+        # MLIR.API.mlirRegisterConversionConvertToLLVMPass()
+        # MLIR.API.mlirRegisterConversionTosaToSCF()
+        # MLIR.API.mlirRegisterConversionConvertLinalgToStandard()
+        # # MLIR.API.mlirRegisterLinalgLinalgDetensorize()
+        # MLIR.API.mlirRegisterLinalgLinalgBufferize()
+        # MLIR.API.mlirRegisterConversionSCFToControlFlow()
 
         
         # MLIR.API.mlirCreateConversionTosaToLinalg()
 
         # add lowering pipeline
-        IR.add_pipeline!(opm, "convert-scf-to-cf,convert-arith-to-llvm,convert-func-to-llvm")
+        # IR.add_pipeline!(opm, "convert-scf-to-cf,convert-arith-to-llvm,convert-func-to-llvm")
         # IR.add_pipeline!(opm, "linalg-bufferize")
 
         # run the lowering pipeline
-        IR.run!(pm, mod)
+        # IR.run!(pm, mod)
         # op = MLIR.API.mlirModuleGetOperation(mod)
         # MLIR.API.mlirPassManagerRunOnOp(pm, op)
 
@@ -199,16 +207,24 @@ function eval_mlir(f, args...)
         IR.enable_verifier!(pm, true)
         IR.verifyall(op)
 
+
+        println("verified")
+
         # lowerToLinalg(ctx, mod)
 
-        println("GOT mod: ", mod)
+        # println("GOT mod: ", mod)
 
         # create the jit (locally)
-        # jit = MLIR.API.mlirExecutionEngineCreate(mod, 0, 0, C_NULL, false)
+        jit = MLIR.API.mlirExecutionEngineCreate(mod, 0, 0, C_NULL, false)
+
+        println("created jit")
 
         # register function call within the JIT
-        # MLIR.API.mlirExecutionEngineLookup(jit, nameof(f))
+        MLIR.API.mlirExecutionEngineLookup(jit, nameof(f))
+        println("created handle")
     end
+
+    println("compiled code successfully")
 
     # expanded_args = eval(Expr(:tuple, args[2:end]...))
     # expanded_types = Expr(:tuple, processed_arg_types_tuple...)
