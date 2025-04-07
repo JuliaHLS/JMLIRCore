@@ -5,22 +5,14 @@ authors = ["Benedict Short <benedictnjshort@gmail.com> and contributors"]
 
 [deps]
 LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
-LanguageServer = "2b0e0bc5-e4fd-59b4-8912-456d1b03d8d7"
 MLIR = "bfde9dd4-8f40-4a1e-be09-1475335e1c92"
-Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
-Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-SymbolServer = "cf896787-08d5-524d-9de7-132aaa0cb996"
 
 [compat]
-LLVM = "9.1.3"
-LanguageServer = "4.5.1"
+LLVM = "9.2.0"
 MLIR = "0.1.0"
-Profile = "1.11.0"
-Revise = "3.7.2"
 StaticArrays = "1.9.12"
-SymbolServer = "7.4.0"
-julia = "1.6.7"
+julia = "1.12.0"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
