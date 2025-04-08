@@ -1,6 +1,6 @@
 name = "JMLIRCore"
 uuid = "94029c64-618c-4c5d-afcf-c534916f7e83"
-version = "1.0.0-DEV"
+version = "0.1.0"
 authors = ["Benedict Short <benedictnjshort@gmail.com> and contributors"]
 
 [deps]
