@@ -12,6 +12,11 @@ mutable struct OwnInst
     end
 end
 
+function invoke(jit::IR.ExecutionEngine, name::String, arguments)
+    fn = MLIR.API.mlirExecutionEngineInvokePacked(jit, name, arguments)
+    return fn == C_NULL ? nothing : fn
+end
+
 "Macro @eval_mlir f(args...)"
 macro eval_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
@@ -193,21 +198,25 @@ function eval_mlir(f, args...)
         mod = IR.Module(op)
         # create the jit (locally)
         jit = IR.ExecutionEngine(mod, 0)
-
-        # register function call within the JIT
-        println(String(nameof((f))))
-        println("Registration Status? ", IR.lookup(jit, String(nameof(f))))
+        IR.lookup(jit, String(nameof(f)))
     end
+
+    # register function call within the JIT
+        # println(String(nameof((f))))
+        # println("Registration Status? ", IR.lookup(jit, String(nameof(f))))
 
     println("compiled code successfully")
 
-    GC.gc()
+    # GC.gc()
 
-    # expanded_args = eval(Expr(:tuple, args[2:end]...))
-    # expanded_types = Expr(:tuple, processed_arg_types_tuple...)
-    # dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
+    expanded_args = eval(Expr(:tuple, args[2:end]...))
+    expanded_types = Expr(:tuple, processed_arg_types_tuple...)
+    # invoke(jit, String(nameof(f)), expanded_args)
 
-    # return eval(dynamic_call)
-    return -1
+    dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
+    println("call: ", dynamic_call)
+
+    return eval(dynamic_call)
+    # return -1
 end
 
