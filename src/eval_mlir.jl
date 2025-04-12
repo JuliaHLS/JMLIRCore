@@ -123,7 +123,7 @@ function eval_mlir(f, args...)
         # lower to linalg
         external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg))" -o temp_out.mlir`, ctx)
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --pass-pipeline="builtin.module(one-shot-bufferize{bufferize-function-boundaries})" -o temp_out.mlir`, ctx) #--one-shot-bufferize --convert-linalg-to-loops --convert-to-llvm -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o temp_out.mlir`, ctx) #--one-shot-bufferize --convert-linalg-to-loops --convert-to-llvm -o temp_out.mlir`, ctx)
         # # mod = external_lowering_mlir_opt!(op, `--one-shot-bufferize`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
@@ -136,6 +136,8 @@ function eval_mlir(f, args...)
 
         external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --lower-affine -o temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
+
+        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --expand-strided-metadata -o temp_out.mlir`, ctx)
 
 
         external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-scf-to-cf -o temp_out.mlir`, ctx)

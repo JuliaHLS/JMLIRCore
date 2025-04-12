@@ -60,6 +60,8 @@ function code_mlir(f, types)
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
 
+    println("Got IR: ", ir)
+
     # convert UInt to Int (generic type required for MLIR)
     
     println("Processing ret type: ", typeof(ret) , " with val: ", ret)
@@ -119,7 +121,6 @@ function code_mlir(f, types)
             IR.NamedAttribute("sym_name", IR.Attribute(string(f_name))),
             IR.NamedAttribute("function_type", IR.Attribute(ftype)),
             IR.NamedAttribute("sym_visibility", IR.Attribute(string("public")))
-            # IR.Attribute("llvm.emit_c_interface")
         ],
         owned_regions=Region[region],
         result_inference=false,
