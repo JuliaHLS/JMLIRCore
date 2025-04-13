@@ -4,7 +4,6 @@ include("blocks.jl")
 include("expressions.jl")
 include("MLIRInterpreter.jl")
 
-
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
@@ -54,7 +53,9 @@ function code_mlir(f, types)
     IR.allow_unregistered_dialects!(true)
 
     ### Initialise abstract interpreter ###
+    println("Creating new MLIR Interpreter")
     interp = MLIRInterpreter()
+    Base.code_ircode
 
     ### Preprocess ###
     ir, ret = only(CC.code_ircode(f, types; interp=interp))

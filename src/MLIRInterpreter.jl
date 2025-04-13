@@ -1,5 +1,11 @@
 include("compiler.jl")
 
+import Core
+using Core.Compiler
+
+using StaticArrays  
+import .Core.Compiler: CallInfo
+
 """
     MLIRInterpreter <: AbstractInterpreter
 
@@ -24,7 +30,7 @@ end
 
 
 
-# default constructor
+""" Default Constructor """
 function MLIRInterpreter(world::UInt=CC.get_world_counter();
     inf_params::Core.Compiler.InferenceParams=Core.Compiler.InferenceParams(),
     opt_params::Core.Compiler.OptimizationParams=Core.Compiler.OptimizationParams())
@@ -56,42 +62,85 @@ Core.Compiler.cache_owner(interp::MLIRInterpreter) = nothing
 
 
 """
-    finish(interp::AbstractInterpreter, opt::OptimizationState,
-           ir::IRCode, caller::InferenceResult)
+    Custom Inlining Mechanism
 
-Override the default post-processing functionality to enforce method inlining at the Julia level
+Implemented in the Abstract Interpreter for robustness
 """
-function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Core.Compiler.OptimizationState, ir::Core.Compiler.IRCode, caller::Core.Compiler.InferenceResult)
+
+struct NoinlineCallInfo <: CallInfo
+    info::CallInfo  # wrapped call info
+end
+
+# add edges
+Compiler.add_edges_impl(edges::Vector{Any}, info::NoinlineCallInfo) = Compiler.add_edges!(edges, info.info)
+Compiler.nsplit_impl(info::NoinlineCallInfo) = Compiler.nsplit(info.info)
+Compiler.getsplit_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getsplit(info.info, idx)
+Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(info.info, idx)
+
+
+
+""" Tag abstract calls with NoinlineCallInfo when needed """
+function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
+
+    ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
+
+    return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
+        for t in arginfo.argtypes
+            if t isa Core.Const# && typeof(t.val) == DataType
+                if t.val == Base.:+
+                    (; rt, exct, effects, info) = ret
+                    return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+                end
+            end
+        end
+        return ret
+    end
+end
+
+
+""" Custom inlining policy """
+function Compiler.src_inlining_policy(interp::MLIRInterpreter,
+    @nospecialize(src), @nospecialize(info::CallInfo), stmt_flag::UInt32)
+
+    # don't inline tagged items
+    if isa(info, NoinlineCallInfo)
+        return false
+    end
+    
+    # else invoke default policy
+    return @invoke Compiler.src_inlining_policy(interp::Compiler.AbstractInterpreter,
+        src::Any, info::CallInfo, stmt_flag::UInt32)
+end
+
+
+function Core.Compiler.finish(interp::MLIRInterpreter, opt::Core.Compiler.OptimizationState, ir::Core.Compiler.IRCode, caller::Core.Compiler.InferenceResult)
     (; src, linfo) = opt
     (; def, specTypes) = linfo
-
-    println("HERE")
 
     # set default for no inlining
     force_noinline = false
 
     # compute inlining and other related optimizations
     result = caller.result
-    # result = CC.widenslotwrapper(result)
+    @assert !(result isa Core.Compiler.LimitedAccuracy)
+    result = Core.Compiler.widenslotwrapper(result)
 
     opt.ir = ir
 
-#     # # determine edgecases and cache the inlineability
-#     sig = CC.unwrap_unionall(specTypes)
-#     if !(isa(sig, DataType) && sig.name === Tuple.name)
-#         force_noinline = true
-#     end
-#     if !CC.is_declared_inline(src) && result === CC.Bottom
-#         force_noinline = true
-#     end
+    # determine edgecases and cache the inlineability
+    sig = CC.unwrap_unionall(specTypes)
+    if !(isa(sig, DataType) && sig.name === Tuple.name)
+        force_noinline = true
+    end
+    if !Core.Compiler.is_declared_inline(src) && result === Core.Compiler.Bottom
+        force_noinline = true
+    end
 
     # determine if we inline the method
     if isa(def, Method)
-        println("HERE2")
-        Core.Compiler.set_inlineable!(src, false)
+        Core.Compiler.set_inlineable!(src, !force_noinline)
     end
 
     return nothing
 end
-
 
