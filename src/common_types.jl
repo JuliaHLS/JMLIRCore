@@ -39,16 +39,8 @@ function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
 end
 
-# # Extend MLIR.jl
-# function IR.Type(T::Core.Type{<:Integer}; context::IR.Context=context())
-#     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
-# end
 
-# function IR.Type(T::Core.Type{<:Signed}; context::IR.Context=context())
-#     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
-# end
-
-
+## StaticArrays 
 function IR.Type(T::Core.Type{<:MArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
     type = IR.Type(T.parameters[2])
@@ -57,9 +49,7 @@ function IR.Type(T::Core.Type{<:MArray}; context::IR.Context=context())
 end
 
 
-## StaticArrays 
 function IR.Type(T::Core.Type{<:SArray}; context::IR.Context=context())
-    println("HERE IN SVECTOR CONSTRUCTOR")
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
     type = IR.Type(T.parameters[2])
 

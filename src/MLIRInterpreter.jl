@@ -31,7 +31,6 @@ end
 function MLIRInterpreter(world::UInt=CC.get_world_counter();
     inf_params::Core.Compiler.InferenceParams=Core.Compiler.InferenceParams(),
     opt_params::Core.Compiler.OptimizationParams=Core.Compiler.OptimizationParams())
-    println("Running constructor for MLIRInterpreter")
 
     curr_max_world = CC.get_world_counter()
 
@@ -86,12 +85,14 @@ function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgIn
     ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
-        for t in arginfo.argtypes
-            if t isa Core.Const# && typeof(t.val) == DataType
-                if t.val == Base.:+
-                    (; rt, exct, effects, info) = ret
-                    return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
-                end
+        if first(arginfo.argtypes).val == Base.:+
+            for t in arginfo.argtypes[2:end]
+                # if t isa Core.Const# && typeof(t.val) == DataType
+                    if t <: SVector || t <: MVector
+                        (; rt, exct, effects, info) = ret
+                        return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+                    end
+                # end
             end
         end
         return ret

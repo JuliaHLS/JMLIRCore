@@ -1,17 +1,6 @@
 include("code_mlir.jl")
 include("compiler.jl")
 
-already_registered = false
-
-# ensure that the lifetimes of the JIT are equal
-mutable struct OwnInst 
-    mod::Union{IR.Module, Nothing}
-    jit::Union{MLIR.API.MlirExecutionEngine, Nothing}
-    function OwnInst()
-        new(nothing, nothing)
-    end
-end
-
 function invoke(jit::IR.ExecutionEngine, name::String, arguments)
     fn = MLIR.API.mlirExecutionEngineInvokePacked(jit, name, arguments)
     return fn == C_NULL ? nothing : fn
@@ -31,14 +20,12 @@ end
 
 # temp solution is just to run it externally, as it is not actually part of the main pipeline
 function registerAllUpstreamDialects!(ctx)
-    println("Registering Dialects")
     if LLVM.version() >= v"15"
         registry = MLIR.API.mlirDialectRegistryCreate()
         MLIR.API.mlirRegisterAllDialects(registry)
         MLIR.API.mlirContextAppendDialectRegistry(ctx, registry)
         MLIR.API.mlirDialectRegistryDestroy(registry)
     else
-        # registry = MLIR.API.mlirDialectRegistryCreate()
         MLIR.API.mlirRegisterAllDialects()
     end
 
@@ -57,9 +44,6 @@ function external_lowering_mlir_opt!(op::IR.Operation, passes::Cmd , ctx)
         write(io, mlir_str)
     end
 
-    println("str taken: ", mlir_str)
-
-
     # lower
     println("Running CMD: ", passes)
     run(passes)
@@ -68,22 +52,8 @@ function external_lowering_mlir_opt!(op::IR.Operation, passes::Cmd , ctx)
     # read from file back into the pipeline
     ir = read("temp_out.mlir", String)
 
-    println("MLIR: ", LLVM.version())
-    println("processed: ", ir)
-    
-
     ctx = MLIR.API.mlirContextCreate()
-    println("processed: 1")
     registerAllUpstreamDialects!(ctx)
-
-    println("num registered dialects ", IR.num_registered_dialects())
-    println("processed: 2")
-    println("Now processing:")
-    println(ir)
-
-    println("Type of ctx: ", typeof(ctx))
-
-    println("processed: 3")
 
     mod = MLIR.API.mlirModuleCreateParse(ctx , ir)
 
@@ -94,7 +64,6 @@ function external_lowering_mlir_opt!(op::IR.Operation, passes::Cmd , ctx)
     return 
 end
 
-fo = OwnInst()
 
 "Execute function using MLIR pipeline"
 function eval_mlir(f, args...)
@@ -203,22 +172,15 @@ function eval_mlir(f, args...)
         IR.lookup(jit, String(nameof(f)))
     end
 
-    # register function call within the JIT
-        # println(String(nameof((f))))
-        # println("Registration Status? ", IR.lookup(jit, String(nameof(f))))
-
     println("compiled code successfully")
 
     # GC.gc()
 
     expanded_args = eval(Expr(:tuple, args[2:end]...))
     expanded_types = Expr(:tuple, processed_arg_types_tuple...)
-    # invoke(jit, String(nameof(f)), expanded_args)
 
     dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
-    println("call: ", dynamic_call)
 
     return eval(dynamic_call)
-    # return -1
 end
 
