@@ -4,7 +4,15 @@ import Core
 using Core.Compiler
 
 using StaticArrays  
+import StaticArrays.MVector
 import .Core.Compiler: CallInfo
+
+
+
+module Overloads
+using StaticArrays  
+     +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = (a + b)::MVector{N, T}
+end
 
 """
     MLIRInterpreter <: AbstractInterpreter
@@ -17,7 +25,7 @@ struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
     world::UInt
 
     # method table to lookup for during inference on this world age
-    method_table::Core.Compiler.CachedMethodTable{Core.Compiler.InternalMethodTable}
+    # method_table::Core.Compiler.CachedMethodTable{Core.Compiler.InternalMethodTable}
 
     # Cache of inference results for this particular interpreter
     inf_cache::Vector{Core.Compiler.InferenceResult}
@@ -29,11 +37,12 @@ struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
 end
 
 
-
 """ Default Constructor """
 function MLIRInterpreter(world::UInt=CC.get_world_counter();
     inf_params::Core.Compiler.InferenceParams=Core.Compiler.InferenceParams(),
     opt_params::Core.Compiler.OptimizationParams=Core.Compiler.OptimizationParams())
+    println("Running constructor for MLIRInterpreter")
+
     curr_max_world = CC.get_world_counter()
 
     # Sometimes the caller is lazy and passes typemax(UInt).
@@ -46,12 +55,20 @@ function MLIRInterpreter(world::UInt=CC.get_world_counter();
     # incorrect, fail out loudly.
     @assert world <= curr_max_world
 
-    method_table = Core.Compiler.CachedMethodTable(Core.Compiler.InternalMethodTable(world))
+    # method_table = Core.Compiler.CachedMethodTable(Core.Compiler.InternalMethodTable(world))
     inf_cache = Vector{Core.Compiler.InferenceResult}() # Initially empty cache
     codegen = IdDict{CC.CodeInstance,CC.CodeInfo}()
 
-    return MLIRInterpreter(world, method_table, inf_cache, codegen, inf_params, opt_params)
+    # overlays TODO: resolve programmatically on startup
+
+    return MLIRInterpreter(world, inf_cache, codegen, inf_params, opt_params)
 end
+
+
+# @overlay MLIRInterpreter.method_table test() = println("HELLO")
+Base.Experimental.@MethodTable OVERLAY_MLIR
+Compiler.method_table(interp::MLIRInterpreter) = Compiler.OverlayMethodTable(Compiler.get_inference_world(interp), OVERLAY_MLIR)
+Base.Experimental.@overlay OVERLAY_MLIR +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = add_type(a,b)::MVector{N, T}
 
 # Satisfy the AbstractInterpreter API contract
 Core.Compiler.InferenceParams(interp::MLIRInterpreter) = interp.inf_params
