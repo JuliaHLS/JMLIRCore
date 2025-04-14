@@ -1,4 +1,11 @@
 include("compiler.jl")
+include("overlays.jl")
+
+import Core
+using Core.Compiler
+
+import .Core.Compiler: CallInfo
+
 
 """
     MLIRInterpreter <: AbstractInterpreter
@@ -10,9 +17,6 @@ struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
     # The world age we're working inside of
     world::UInt
 
-    # method table to lookup for during inference on this world age
-    method_table::Core.Compiler.CachedMethodTable{Core.Compiler.InternalMethodTable}
-
     # Cache of inference results for this particular interpreter
     inf_cache::Vector{Core.Compiler.InferenceResult}
     codegen::IdDict{CC.CodeInstance,CC.CodeInfo}
@@ -23,11 +27,11 @@ struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
 end
 
 
-
-# default constructor
+""" Default Constructor """
 function MLIRInterpreter(world::UInt=CC.get_world_counter();
     inf_params::Core.Compiler.InferenceParams=Core.Compiler.InferenceParams(),
     opt_params::Core.Compiler.OptimizationParams=Core.Compiler.OptimizationParams())
+
     curr_max_world = CC.get_world_counter()
 
     # Sometimes the caller is lazy and passes typemax(UInt).
@@ -40,12 +44,12 @@ function MLIRInterpreter(world::UInt=CC.get_world_counter();
     # incorrect, fail out loudly.
     @assert world <= curr_max_world
 
-    method_table = Core.Compiler.CachedMethodTable(Core.Compiler.InternalMethodTable(world))
     inf_cache = Vector{Core.Compiler.InferenceResult}() # Initially empty cache
     codegen = IdDict{CC.CodeInstance,CC.CodeInfo}()
 
-    return MLIRInterpreter(world, method_table, inf_cache, codegen, inf_params, opt_params)
+    return MLIRInterpreter(world, inf_cache, codegen, inf_params, opt_params)
 end
+
 
 # Satisfy the AbstractInterpreter API contract
 Core.Compiler.InferenceParams(interp::MLIRInterpreter) = interp.inf_params
@@ -54,14 +58,64 @@ Core.Compiler.get_inference_world(interp::MLIRInterpreter) = interp.world
 Core.Compiler.get_inference_cache(interp::MLIRInterpreter) = interp.inf_cache
 Core.Compiler.cache_owner(interp::MLIRInterpreter) = nothing
 
+# Set custom method table bindings
+Compiler.method_table(interp::MLIRInterpreter) = Compiler.OverlayMethodTable(Compiler.get_inference_world(interp), MLIROverlays.MLIR_MT)
 
 """
-    finish(interp::AbstractInterpreter, opt::OptimizationState,
-           ir::IRCode, caller::InferenceResult)
+    Custom Inlining Mechanism
 
-Override the default post-processing functionality to enforce method inlining at the Julia level
+Implemented in the Abstract Interpreter for robustness
 """
-function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Core.Compiler.OptimizationState, ir::Core.Compiler.IRCode, caller::Core.Compiler.InferenceResult)
+
+struct NoinlineCallInfo <: CallInfo
+    info::CallInfo  # wrapped call info
+end
+
+# add edges
+Compiler.add_edges_impl(edges::Vector{Any}, info::NoinlineCallInfo) = Compiler.add_edges!(edges, info.info)
+Compiler.nsplit_impl(info::NoinlineCallInfo) = Compiler.nsplit(info.info)
+Compiler.getsplit_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getsplit(info.info, idx)
+Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(info.info, idx)
+
+
+
+""" Tag abstract calls with NoinlineCallInfo when needed """
+function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
+
+    ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
+
+    return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
+        if first(arginfo.argtypes).val == Base.:+
+            for t in arginfo.argtypes[2:end]
+                # if t isa Core.Const# && typeof(t.val) == DataType
+                    if t <: SVector || t <: MVector
+                        (; rt, exct, effects, info) = ret
+                        return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+                    end
+                # end
+            end
+        end
+        return ret
+    end
+end
+
+
+""" Custom inlining policy """
+function Compiler.src_inlining_policy(interp::MLIRInterpreter,
+    @nospecialize(src), @nospecialize(info::CallInfo), stmt_flag::UInt32)
+
+    # don't inline tagged items
+    if isa(info, NoinlineCallInfo)
+        return false
+    end
+    
+    # else invoke default policy
+    return @invoke Compiler.src_inlining_policy(interp::Compiler.AbstractInterpreter,
+        src::Any, info::CallInfo, stmt_flag::UInt32)
+end
+
+
+function Core.Compiler.finish(interp::MLIRInterpreter, opt::Core.Compiler.OptimizationState, ir::Core.Compiler.IRCode, caller::Core.Compiler.InferenceResult)
     (; src, linfo) = opt
     (; def, specTypes) = linfo
 
@@ -70,8 +124,8 @@ function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Co
 
     # compute inlining and other related optimizations
     result = caller.result
-    @assert !(result isa CC.LimitedAccuracy)
-    result = CC.widenslotwrapper(result)
+    @assert !(result isa Core.Compiler.LimitedAccuracy)
+    result = Core.Compiler.widenslotwrapper(result)
 
     opt.ir = ir
 
@@ -80,24 +134,15 @@ function Core.Compiler.finish(interp::Core.Compiler.AbstractInterpreter, opt::Co
     if !(isa(sig, DataType) && sig.name === Tuple.name)
         force_noinline = true
     end
-    if !CC.is_declared_inline(src) && result === CC.Bottom
+    if !Core.Compiler.is_declared_inline(src) && result === Core.Compiler.Bottom
         force_noinline = true
     end
 
     # determine if we inline the method
     if isa(def, Method)
-        CC.set_inlineable!(src, !force_noinline)
+        Core.Compiler.set_inlineable!(src, !force_noinline)
     end
 
     return nothing
-end
-
-
-function test(a, b)
-    if(a < 0)
-        return 0
-    else
-        return a + b + test(a, b - 1)
-    end
 end
 

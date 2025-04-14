@@ -1,5 +1,5 @@
 # Define the mapping from Julia IR -> MLIR Operations
-using MLIR.Dialects: arith, func, cf
+using MLIR.Dialects: arith, func, cf, memref, linalg, tosa, tensor
 
 
 # Enumerate the Predicates

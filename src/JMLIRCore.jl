@@ -1,3 +1,4 @@
+__precompile__(false)
 module JMLIRCore
 
 # add files to import from

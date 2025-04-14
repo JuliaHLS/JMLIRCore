@@ -4,19 +4,6 @@ include("blocks.jl")
 include("expressions.jl")
 include("MLIRInterpreter.jl")
 
-
-function simple_type_conversion(arg)
-    type = Core.Typeof(arg)
-    
-    if type == UInt64
-        return Int64
-    elseif type == UInt32
-        return Int32
-    else
-        return type
-    end
-end
-
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
     @assert Meta.isexpr(call, :call) "only calls are supported"
@@ -26,13 +13,13 @@ macro code_mlir(call)
         Expr(
             :curly,
             Tuple,
-            map(arg -> :($(simple_type_conversion)($arg)), call.args[(begin+1):end])...,
+            map(arg -> :($(Core.Typeof)($arg)), call.args[(begin+1):end])...,
         ),
     )
 
 
     # force get a new by default (if we call code_mlir via the macro)
-    ctx = IR.Context()
+    # ctx = IR.Context()
 
     quote
         code_mlir($f, $args)
@@ -40,30 +27,31 @@ macro code_mlir(call)
 end
 
 
-
 "Translate typed IR into MLIR"
 function code_mlir(f, types)
     ### Setup the context ###
-
     if !IR._has_context()
         ctx = IR.Context()
     end
 
     # load dialects
-    for dialect in (:func, :cf)
+    
+
+    for dialect in (:func, :cf, :memref, :linalg, :tensor)
         IR.register_dialect!(IR.DialectHandle(dialect))
     end
+
     IR.load_all_available_dialects()
 
+    IR.allow_unregistered_dialects!(true)
 
     ### Initialise abstract interpreter ###
     interp = MLIRInterpreter()
+    Base.code_ircode
 
     ### Preprocess ###
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
-
-    # convert UInt to Int (generic type required for MLIR)
 
     result_types = [IR.Type(ret)]
 
@@ -119,6 +107,7 @@ function code_mlir(f, types)
         attributes=[
             IR.NamedAttribute("sym_name", IR.Attribute(string(f_name))),
             IR.NamedAttribute("function_type", IR.Attribute(ftype)),
+            IR.NamedAttribute("sym_visibility", IR.Attribute(string("public")))
         ],
         owned_regions=Region[region],
         result_inference=false,

@@ -3,7 +3,8 @@ using LLVM: LLVM
 using Core: PhiNode, GotoNode, GotoIfNot, SSAValue, Argument, ReturnNode, PiNode
 using MLIR.IR
 using MLIR
-using MLIR.Dialects: arith, func, cf
+using MLIR.Dialects: arith, func, cf, linalg
+using StaticArrays
 
 include("compiler.jl")
 
@@ -31,14 +32,29 @@ Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
 
 
-ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64}
+ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray}
 
-function type_convert(ir)
-    for i in 1:length(ir.argtypes)
-        if ir.argtypes[i] == UInt64
-            ir.argtypes[i] = Int64
-        end
-    end
+# Extend MLIR.jl
+function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
+    return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
 end
 
-# replace UInt with Int
+
+## StaticArrays 
+function IR.Type(T::Core.Type{<:MArray}; context::IR.Context=context())
+    dims::Vector{Int64} = collect(T.parameters[1].parameters)
+    type = IR.Type(T.parameters[2])
+
+    return IR.TensorType(dims, type)
+end
+
+
+function IR.Type(T::Core.Type{<:SArray}; context::IR.Context=context())
+    dims::Vector{Int64} = collect(T.parameters[1].parameters)
+    type = IR.Type(T.parameters[2])
+
+    return IR.TensorType(dims, type)
+end
+
+
+
