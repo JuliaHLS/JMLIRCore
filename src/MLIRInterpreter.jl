@@ -6,12 +6,16 @@ using Core.Compiler
 using StaticArrays  
 import StaticArrays.MVector
 import .Core.Compiler: CallInfo
+# using MLIR.IR
+# using MLIR
 
 
 
 module Overloads
 using StaticArrays  
      +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = (a + b)::MVector{N, T}
+
+     
 end
 
 """
@@ -69,6 +73,16 @@ end
 Base.Experimental.@MethodTable OVERLAY_MLIR
 Compiler.method_table(interp::MLIRInterpreter) = Compiler.OverlayMethodTable(Compiler.get_inference_world(interp), OVERLAY_MLIR)
 Base.Experimental.@overlay OVERLAY_MLIR +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = add_type(a,b)::MVector{N, T}
+# Base.Experimental.@overlay OVERLAY_MLIR IR.Type(T::Core.Type{<:MVector}; context::IR.Context=context())
+
+# Base.Experimental.@overlay OVERLAY_MLIR function IR.Type(T::Core.Type{<:MVector}; context::IR.Context=context())
+#     dims::Vector{Int64} = collect(T.parameters[1].parameters)
+#     type = IR.Type(T.parameters[2])
+
+#     return IR.TensorType(dims, type)
+# end
+
+
 
 # Satisfy the AbstractInterpreter API contract
 Core.Compiler.InferenceParams(interp::MLIRInterpreter) = interp.inf_params

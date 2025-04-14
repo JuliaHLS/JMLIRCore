@@ -27,7 +27,6 @@ macro code_mlir(call)
 end
 
 
-
 "Translate typed IR into MLIR"
 function code_mlir(f, types)
     ### Setup the context ###

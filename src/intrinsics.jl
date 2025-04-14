@@ -1,6 +1,6 @@
 include("common_types.jl")
 include("mapping.jl")
-using MLIR
+# using MLIR
 
 # generic check is fop is registered as a math function
 function is_math(fop)::Bool

@@ -32,7 +32,7 @@ Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
 
 
-ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SVector}
+ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray}
 
 # Extend MLIR.jl
 function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
@@ -49,8 +49,17 @@ end
 # end
 
 
+function IR.Type(T::Core.Type{<:MArray}; context::IR.Context=context())
+    dims::Vector{Int64} = collect(T.parameters[1].parameters)
+    type = IR.Type(T.parameters[2])
+
+    return IR.TensorType(dims, type)
+end
+
+
 ## StaticArrays 
-function IR.Type(T::Core.Type{<:SVector}; context::IR.Context=context())
+function IR.Type(T::Core.Type{<:SArray}; context::IR.Context=context())
+    println("HERE IN SVECTOR CONSTRUCTOR")
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
     type = IR.Type(T.parameters[2])
 
