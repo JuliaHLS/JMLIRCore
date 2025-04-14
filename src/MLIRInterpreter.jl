@@ -1,22 +1,11 @@
 include("compiler.jl")
+include("overlays.jl")
 
 import Core
 using Core.Compiler
 
-using StaticArrays  
-import StaticArrays.MVector
 import .Core.Compiler: CallInfo
-# using MLIR.IR
-# using MLIR
 
-
-
-module Overloads
-using StaticArrays  
-     +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = (a + b)::MVector{N, T}
-
-     
-end
 
 """
     MLIRInterpreter <: AbstractInterpreter
@@ -27,9 +16,6 @@ without modifying default behaviour
 struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
     # The world age we're working inside of
     world::UInt
-
-    # method table to lookup for during inference on this world age
-    # method_table::Core.Compiler.CachedMethodTable{Core.Compiler.InternalMethodTable}
 
     # Cache of inference results for this particular interpreter
     inf_cache::Vector{Core.Compiler.InferenceResult}
@@ -59,29 +45,11 @@ function MLIRInterpreter(world::UInt=CC.get_world_counter();
     # incorrect, fail out loudly.
     @assert world <= curr_max_world
 
-    # method_table = Core.Compiler.CachedMethodTable(Core.Compiler.InternalMethodTable(world))
     inf_cache = Vector{Core.Compiler.InferenceResult}() # Initially empty cache
     codegen = IdDict{CC.CodeInstance,CC.CodeInfo}()
 
-    # overlays TODO: resolve programmatically on startup
-
     return MLIRInterpreter(world, inf_cache, codegen, inf_params, opt_params)
 end
-
-
-# @overlay MLIRInterpreter.method_table test() = println("HELLO")
-Base.Experimental.@MethodTable OVERLAY_MLIR
-Compiler.method_table(interp::MLIRInterpreter) = Compiler.OverlayMethodTable(Compiler.get_inference_world(interp), OVERLAY_MLIR)
-Base.Experimental.@overlay OVERLAY_MLIR +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = add_type(a,b)::MVector{N, T}
-# Base.Experimental.@overlay OVERLAY_MLIR IR.Type(T::Core.Type{<:MVector}; context::IR.Context=context())
-
-# Base.Experimental.@overlay OVERLAY_MLIR function IR.Type(T::Core.Type{<:MVector}; context::IR.Context=context())
-#     dims::Vector{Int64} = collect(T.parameters[1].parameters)
-#     type = IR.Type(T.parameters[2])
-
-#     return IR.TensorType(dims, type)
-# end
-
 
 
 # Satisfy the AbstractInterpreter API contract
@@ -91,6 +59,8 @@ Core.Compiler.get_inference_world(interp::MLIRInterpreter) = interp.world
 Core.Compiler.get_inference_cache(interp::MLIRInterpreter) = interp.inf_cache
 Core.Compiler.cache_owner(interp::MLIRInterpreter) = nothing
 
+# Set custom method table bindings
+Compiler.method_table(interp::MLIRInterpreter) = Compiler.OverlayMethodTable(Compiler.get_inference_world(interp), MLIROverlays.MLIR_MT)
 
 """
     Custom Inlining Mechanism
