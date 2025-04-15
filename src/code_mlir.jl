@@ -53,6 +53,7 @@ function code_mlir(f, types)
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
 
+    println("GOT IR: ", ir)
     result_types = [IR.Type(ret)]
 
     # values

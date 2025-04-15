@@ -1,11 +1,11 @@
 include("compiler.jl")
 include("overlays.jl")
+include("intrinsics.jl")
 
 import Core
 using Core.Compiler
 
 import .Core.Compiler: CallInfo
-
 
 """
     MLIRInterpreter <: AbstractInterpreter
@@ -79,16 +79,19 @@ Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(i
 
 
 
+const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/])
 """ Tag abstract calls with NoinlineCallInfo when needed """
 function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
-        if first(arginfo.argtypes) isa Core.Const && first(arginfo.argtypes).val == Base.:+
+        if first(arginfo.argtypes) isa Core.Const && first(arginfo.argtypes).val in NOINLINE_OPERATORS
+            println("Evaluating: ", arginfo, " for a noinline")
             for t in arginfo.argtypes[2:end]
                 # if t isa Core.Const# && typeof(t.val) == DataType
                     if t <: SVector || t <: MVector
+                        println("Executing Noinline")
                         (; rt, exct, effects, info) = ret
                         return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
                     end

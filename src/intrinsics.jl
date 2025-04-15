@@ -91,6 +91,7 @@ function intrinsic_to_mlir(target_function)
     elseif target_function in keys(custom_intrinsics)             # custom intrinsics
         return custom_intrinsics[target_function]
     else
+        println("target_function: ", target_function)
         fop = linalg_op()
         return (block::Block, args; result, location=Location()) ->
         push!(block, fop(args...; result=result, location))
