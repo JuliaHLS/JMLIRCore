@@ -7,6 +7,6 @@ using StaticArrays
 Base.Experimental.@MethodTable MLIR_MT
 
 """ Overlays for Core Operations, e.g +, -, ...) """
-Base.Experimental.@overlay OVERLAY_MLIR +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = add_type(a,b)::MVector{N, T}
+Base.Experimental.@overlay MLIR_MT +(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = add_type(a,b)::MVector{N, T}
 
 end
