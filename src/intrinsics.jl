@@ -51,6 +51,8 @@ function linalg_op()
 end
 
 
+
+
 # insert single operations
 function single_op_wrapper(fop, target::Function)
     # if fop is a math operation, it needs to forward the return type
@@ -78,10 +80,36 @@ function single_op_wrapper(fop)
         push!(block, fop(args...; result, location))
 end
 
+struct MethodDetails
+    sym::Symbol
+    sig::Any
+    rettype::DataType
+end
+
+function clean_mangled_symbol(sym::Symbol)::Symbol
+    cleaned = lstrip(String(sym), '#')
+    return Symbol(cleaned)
+end
+
+function MethodDetails(fn::Core.CodeInstance)::MethodDetails
+    return MethodDetails(clean_mangled_symbol(fn.def.def.name), fn.def.def.sig, fn.rettype)
+end
+
+function generate_mlir(op, rettype::DataType, sig)
+    error("Error: no mlir translation defined for $op")
+end
+
+function generate_mlir(::Val{:-}, rettype::DataType, sig::Any)
+    println("HIT TARGET")
+end
+
+
 ## conversion to MLIR
+test = [:+, :-]
 
 # map Julia intrinsics to MLIR
 function intrinsic_to_mlir(target_function)
+    println("target_function: ", target_function, " with type: ", typeof(target_function))
     if target_function in keys(operations)                        # map operations
         return single_op_wrapper(operations[target_function], target_function)
     elseif target_function in keys(int_predicate)                     # operator mappings
@@ -91,8 +119,23 @@ function intrinsic_to_mlir(target_function)
     elseif target_function in keys(custom_intrinsics)             # custom intrinsics
         return custom_intrinsics[target_function]
     else
-        println("target_function: ", target_function)
+        println("mi: ", target_function.def, " with type: ", typeof(target_function.def))
+        println("mi_def: ", target_function.def.def, " with type: ", typeof(target_function.def.def))
+        println("eq: ", target_function.def.def.name in test)
+        println("name: ", target_function.def.def.name, " of type: ", typeof(target_function.def.def.name))
+        println("sig: ", target_function.def.def.sig, " of type: ", typeof(target_function.def.def.sig))
+        println("sig: ", target_function.rettype, " of type: ", typeof(target_function.rettype))
+        # println("sig: ", target_function.sig, " of type: ", typeof(target_function.sig))
+        println("eq2: ", target_function.def.def.name === :-)
+        println("against: ", :-)
+        println("cleaned: ", clean_mangled_symbol(target_function.def.def.name) == :-)
         fop = linalg_op()
+
+        md = MethodDetails(target_function)
+        println(typeof(md.sym), ", ", typeof(md.sig), ", ", typeof(md.rettype))
+        println((md.sym), ", ", (md.sig), ", ", (md.rettype))
+        generate_mlir(Val(md.sym), md.rettype, md.sig)
+
         return (block::Block, args; result, location=Location()) ->
         push!(block, fop(args...; result=result, location))
     end
