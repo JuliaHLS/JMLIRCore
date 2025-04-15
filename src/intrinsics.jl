@@ -99,8 +99,20 @@ function generate_mlir(op, rettype, sig)
     error("Error: no mlir translation defined for $op")
 end
 
+
+function generate_mlir(::Val{:+}, rettype::Type{<:MVector}, sig::Any)
+    println("HIT TARGET for MVECTOR")
+    function (ops...; result, location=Location())
+        return tosa.add(ops...;output=result, location=location)
+    end
+end
+
+
 function generate_mlir(::Val{:-}, rettype::Type{<:MVector}, sig::Any)
     println("HIT TARGET for MVECTOR")
+    function (ops...; result, location=Location())
+        return tosa.sub(ops...;output=result, location=location)
+    end
 end
 
 function generate_mlir(md::MethodDetails)
@@ -133,12 +145,12 @@ function intrinsic_to_mlir(target_function)
         println("eq2: ", target_function.def.def.name === :-)
         println("against: ", :-)
         println("cleaned: ", clean_mangled_symbol(target_function.def.def.name) == :-)
-        fop = linalg_op()
+        # fop = linalg_op()
 
         md = MethodDetails(target_function)
         println(typeof(md.sym), ", ", typeof(md.sig), ", ", typeof(md.rettype))
         # generate_mlir(Val(md.sym), md.rettype, md.sig)
-        generate_mlir(md)
+        fop = generate_mlir(md)
 
         return (block::Block, args; result, location=Location()) ->
         push!(block, fop(args...; result=result, location))
