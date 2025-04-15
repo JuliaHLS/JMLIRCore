@@ -95,14 +95,18 @@ function MethodDetails(fn::Core.CodeInstance)::MethodDetails
     return MethodDetails(clean_mangled_symbol(fn.def.def.name), fn.def.def.sig, fn.rettype)
 end
 
-function generate_mlir(op, rettype::DataType, sig)
+function generate_mlir(op, rettype, sig)
     error("Error: no mlir translation defined for $op")
 end
 
-function generate_mlir(::Val{:-}, rettype::DataType, sig::Any)
-    println("HIT TARGET")
+function generate_mlir(::Val{:-}, rettype::Type{<:MVector}, sig::Any)
+    println("HIT TARGET for MVECTOR")
 end
 
+function generate_mlir(md::MethodDetails)
+    println("Looking for dispatch target: ", (Val(md.sym)), ", ", (Val(md.sig)), ", ", (md.rettype))
+    return generate_mlir(Val(md.sym), (md.rettype), md.sig)
+end
 
 ## conversion to MLIR
 test = [:+, :-]
@@ -133,8 +137,8 @@ function intrinsic_to_mlir(target_function)
 
         md = MethodDetails(target_function)
         println(typeof(md.sym), ", ", typeof(md.sig), ", ", typeof(md.rettype))
-        println((md.sym), ", ", (md.sig), ", ", (md.rettype))
-        generate_mlir(Val(md.sym), md.rettype, md.sig)
+        # generate_mlir(Val(md.sym), md.rettype, md.sig)
+        generate_mlir(md)
 
         return (block::Block, args; result, location=Location()) ->
         push!(block, fop(args...; result=result, location))
