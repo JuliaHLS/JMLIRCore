@@ -72,9 +72,7 @@ function collect_results(op::IR.Operation)
         push!(results, IR.result(op, i))
     end
 
-    types = IR.Type.(results)
-
-    return results, types
+    return results
 end
 
 
@@ -113,11 +111,17 @@ function IR.pass_run(::LowerJuliaAdd, func_op)
             prev_op = op
             prev_ref = operands[1]
 
+            res = collect_results(op)
+
+            println("Collect Results: ", res, " with len: ", length(res), " with type: ", typeof(res[1]))
+
+            prev_val = operands[1]
+
             for new_ref in operands[2:end]
                 if types[1] <: Integer && types[2] <: Integer
-                    new_op = arith.addi(prev_ref, new_ref)
+                    new_op = arith.addi(prev_val, new_ref)
                 elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                    new_op = arith.addf(prev_ref, new_ref)
+                    new_op = arith.addf((prev_val), new_ref)
                 else
                     error("Error in LowerJuliaAdd pass, unrecognized return signature $types")
                 end
@@ -125,6 +129,7 @@ function IR.pass_run(::LowerJuliaAdd, func_op)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
             end
 
             push!(replace_ops, [op, prev_op])
