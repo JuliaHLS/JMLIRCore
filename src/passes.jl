@@ -99,11 +99,9 @@ struct LowerJuliaAdd <: IR.AbstractPass end
 IR.opname(::LowerJuliaAdd) = "func.func"
 
 function IR.pass_run(::LowerJuliaAdd, func_op)
-    println("HERE")
     block = get_first_region(func_op)
-    println("Block type: ", typeof(block))
 
-    replace_ops = [] #Dict{IR.Operation, IR.Operation}()
+    replace_ops = []
 
     for region in IR.RegionIterator(func_op)
         for block in IR.BlockIterator(region)
