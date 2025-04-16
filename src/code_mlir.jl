@@ -124,8 +124,11 @@ function code_mlir(f, types)
     body = IR.body(mod)
     push!(body, op)
 
+
+    println("Produced Module: ", mod)
+
     ### Lower from julia dialect ###
-    run!(LowerJuliaAdd(), mod, ctx)
+    run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
 
     ### return result ###
     return op

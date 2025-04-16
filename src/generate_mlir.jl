@@ -78,11 +78,6 @@ end
 
 
 ### INTEGERS ###
-
-function generate_mlir(::Val{:-}, rettype::Type{<:Integer}, sig::Any)
-    return single_op_wrapper_with_result(arith.subi)
-end
-
 function generate_mlir(::Val{:*}, rettype::Type{<:Integer}, sig::Any)
     return single_op_wrapper_with_result(arith.muli)
 end
@@ -105,16 +100,16 @@ function generate_mlir(::Val{:+}, rettype::Type{<:Real}, sig::Any)
     return single_op_wrapper_with_result(julia.add)
 end
 
-function generate_mlir(::Val{:-}, rettype::Type{<:AbstractFloat}, sig::Any)
-    return single_op_wrapper_with_result(arith.subf)
+function generate_mlir(::Val{:-}, rettype::Type{<:Real}, sig::Any)
+    return single_op_wrapper_with_result(julia.sub)
 end
 
-function generate_mlir(::Val{:*}, rettype::Type{<:AbstractFloat}, sig::Any)
-    return single_op_wrapper_with_result(arith.mulf)
+function generate_mlir(::Val{:*}, rettype::Type{<:Real}, sig::Any)
+    return single_op_wrapper_with_result(julia.mul)
 end
 
-function generate_mlir(::Val{:/}, rettype::Type{<:AbstractFloat}, sig::Any)
-    return single_op_wrapper_with_result(arith.divf)
+function generate_mlir(::Val{:/}, rettype::Type{<:Real}, sig::Any)
+    return single_op_wrapper_with_result(julia.div)
 end
 
 function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat}, sig::Any)
