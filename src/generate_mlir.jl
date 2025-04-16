@@ -78,9 +78,6 @@ end
 
 
 ### INTEGERS ###
-function generate_mlir(::Val{:+}, rettype::Type{<:Integer}, sig::Any)
-    return single_op_wrapper_with_result(arith.addi)
-end
 
 function generate_mlir(::Val{:-}, rettype::Type{<:Integer}, sig::Any)
     return single_op_wrapper_with_result(arith.subi)
@@ -104,7 +101,7 @@ end
 
 
 ### FLOAT ###
-function generate_mlir(::Val{:+}, rettype::Type{<:AbstractFloat}, sig::Any)
+function generate_mlir(::Val{:+}, rettype::Type{<:Real}, sig::Any)
     return single_op_wrapper_with_result(julia.add)
 end
 

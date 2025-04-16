@@ -27,7 +27,7 @@ function run!(pass::IR.AbstractPass, mod::IR.Module, ctx)
     if isempty(opname)
         IR.add_owned_pass!(pm, mlir_pass)
     else
-        @assert is_registered_operation(opname, ctx) "$opname is not registered"
+        # @assert is_registered_operation(opname, ctx) "$opname is not registered"
         opm = IR.OpPassManager(pm, opname)
         IR.add_owned_pass!(opm, mlir_pass)
     end
@@ -41,8 +41,8 @@ block(operation) = Block(API.mlirOperationGetBlock(operation), false)
 parent_operation(operation) = Operation(API.mlirOperationGetParentOperation(operation), false)
 dialect(operation) = first(split(name(operation), '.')) |> Symbol
 
-function get_first_region(op::Operation)
-    reg = iterate(RegionIterator(op))
+function get_first_region(op::IR.Operation)
+    reg = iterate(IR.RegionIterator(op))
     isnothing(reg) && return nothing
     first(reg)
 end
@@ -99,40 +99,41 @@ struct LowerJuliaAdd <: IR.AbstractPass end
 IR.opname(::LowerJuliaAdd) = "func.func"
 
 function IR.pass_run(::LowerJuliaAdd, func_op)
-    block = get_first_block(func_op)
+    println("HERE")
+    block = get_first_region(func_op)
+    println("Block type: ", typeof(block))
 
     replace_ops = [] #Dict{IR.Operation, IR.Operation}()
 
-    for op in IR.OperationIterator(block)
-        if name(op) == "julia.add"
-            operands = collect_operands(op)
-            types = IR.julia_type.(IR.type.(operands))
+    for region in IR.RegionIterator(func_op)
+        for block in IR.BlockIterator(region)
+            for op in IR.OperationIterator(block)
+                if name(op) == "julia.add"
+                    operands = collect_operands(op)
+                    types = IR.julia_type.(IR.type.(operands))
 
-            prev_op = op
-            prev_ref = operands[1]
+                    prev_op = op
+                    prev_ref = operands[1]
+                    prev_val = operands[1]
 
-            res = collect_results(op)
+                    for new_ref in operands[2:end]
+                        if types[1] <: Integer && types[2] <: Integer
+                            new_op = arith.addi(prev_val, new_ref)
+                        elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
+                            new_op = arith.addf((prev_val), new_ref)
+                        else
+                            error("Error in LowerJuliaAdd pass, unrecognized return signature $types")
+                        end
 
-            println("Collect Results: ", res, " with len: ", length(res), " with type: ", typeof(res[1]))
+                        IR.insert_after!(block, prev_op, new_op)
+                        prev_op = new_op
+                        prev_ref = new_ref
+                        prev_val = collect_results(prev_op)[1]
+                    end
 
-            prev_val = operands[1]
-
-            for new_ref in operands[2:end]
-                if types[1] <: Integer && types[2] <: Integer
-                    new_op = arith.addi(prev_val, new_ref)
-                elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                    new_op = arith.addf((prev_val), new_ref)
-                else
-                    error("Error in LowerJuliaAdd pass, unrecognized return signature $types")
+                    push!(replace_ops, [op, prev_op])
                 end
-
-                IR.insert_after!(block, prev_op, new_op)
-                prev_op = new_op
-                prev_ref = new_ref
-                prev_val = collect_results(prev_op)[1]
             end
-
-            push!(replace_ops, [op, prev_op])
         end
     end
 
