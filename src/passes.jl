@@ -26,8 +26,10 @@ end
 module JuliaPasses
 
 using MLIR.IR
+import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith
+using MLIR.Dialects: arith, tosa
+
 
 location(operation) = Location(API.mlirOperationGetLocation(operation))
 name(operation) = String(API.mlirOperationGetName(operation))
@@ -71,22 +73,70 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         prev_ref = operands[1]
         prev_val = operands[1]
 
+        replaced = false
+
         for new_ref in operands[2:end]
             if types[1] <: Integer && types[2] <: Integer
                 new_op = fn_int(prev_val, new_ref)
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
+
+                replaced = true
+
             elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
                 new_op = fn_float((prev_val), new_ref)
-            else
-                error("Error in LowerJuliaArith pass, unrecognized return signature $types")
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
+
+                replaced = true
+
+            # else
+            #     error("Error in LowerJuliaArith pass, unrecognized return signature $types")
             end
 
-            IR.insert_after!(block, prev_op, new_op)
-            prev_op = new_op
-            prev_ref = new_ref
-            prev_val = collect_results(prev_op)[1]
         end
 
-        push!(replace_ops, [op, prev_op])
+        if replaced
+            push!(replace_ops, [op, prev_op])
+        end
+    end
+
+
+    # TODO: turn into proper dynamic dispatch
+    function unroll_operation_mat!(op::IR.Operation, block, fn)
+        operands = collect_operands(op)
+        types = IR.julia_type.((IR.type.(operands)))
+
+        ret = IR.type.(collect_results(op))[1]
+
+        prev_op = op
+        prev_ref = operands[1]
+        prev_val = operands[1]
+
+        replaced = false
+
+        for new_ref in operands[2:end]
+            if types[1] <: AbstractArray && types[2] <: AbstractArray
+                new_op = fn(prev_val, new_ref, output=ret)
+            # else
+            #     error("Error in LowerJuliaArith pass, unrecognized return signature $types")
+
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
+
+                replaced = true
+            end
+        end
+
+        if replaced
+            push!(replace_ops, [op, prev_op])
+        end
     end
 
 
@@ -96,12 +146,15 @@ function IR.pass_run(::LowerJuliaArith, func_op)
             for op in IR.OperationIterator(block)
                 if name(op) == "julia.add"
                     unroll_operation!(op, block, arith.addi, arith.addf)
+                    unroll_operation_mat!(op, block, tosa.add)
                 elseif name(op) == "julia.sub"
                     unroll_operation!(op, block, arith.subi, arith.subf)
+                    unroll_operation_mat!(op, block, tosa.sub)
                 elseif name(op) == "julia.mul"
                     unroll_operation!(op, block, arith.muli, arith.mulf)
+                    unroll_operation_mat!(op, block, tosa.matmul)
                 elseif name(op) == "julia.div"
-                    # TODO: check there is no div equivalent
+                    # TODO: check there is no div equivalnet
                     unroll_operation!(op, block, arith.divf, arith.divf)
                 end
             end

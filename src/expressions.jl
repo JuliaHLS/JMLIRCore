@@ -25,12 +25,6 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
 
         args = get_value.(extracted_args, context, blocks)
 
-
-        # if inst.args[(begin+1):end][1] isa GlobalRef
-        #     println("modifying to a vector")
-        #     args = map(x -> [x], args)
-        # end
-
         # TODO: investigate the feasibility of reintroducing location in Julia v1.12
         # location = Location(string(context.line.file), context.line.line, 0)
         res = IR.result(fop!(blocks.current_block, args; result=type::Union{Nothing,IR.Type}))

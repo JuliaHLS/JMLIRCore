@@ -77,11 +77,7 @@ function generate_mlir(op, rettype, sig)
 end
 
 
-### INTEGERS ###
-function generate_mlir(::Val{:*}, rettype::Type{<:Integer}, sig::Any)
-    return single_op_wrapper_with_result(arith.muli)
-end
-
+### Number Type Specific ###
 function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
     return single_op_wrapper_out_is_result(arith.shrui)
 end
@@ -94,43 +90,27 @@ function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer}, s
     return single_op_wrapper_out_is_result(arith.remsi)
 end
 
-
-### FLOAT ###
-function generate_mlir(::Val{:+}, rettype::Type{<:Real}, sig::Any)
-    return single_op_wrapper_with_result(julia.add)
-end
-
-function generate_mlir(::Val{:-}, rettype::Type{<:Real}, sig::Any)
-    return single_op_wrapper_with_result(julia.sub)
-end
-
-function generate_mlir(::Val{:*}, rettype::Type{<:Real}, sig::Any)
-    return single_op_wrapper_with_result(julia.mul)
-end
-
-function generate_mlir(::Val{:/}, rettype::Type{<:Real}, sig::Any)
-    return single_op_wrapper_with_result(julia.div)
-end
-
 function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat}, sig::Any)
     return single_op_wrapper_with_result(arith.sitofp)
 end
 
 
-
-### VECTORS ###
-function generate_mlir(::Val{:+}, rettype::Type{<:MVector}, sig::Any)
-    return single_op_wrapper_output_is_result(tosa.add)
+### Generic Arithmetic ###
+function generate_mlir(::Val{:+}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_with_result(julia.add)
 end
 
-function generate_mlir(::Val{:-}, rettype::Type{<:MVector}, sig::Any)
-    return single_op_wrapper_output_is_result(tosa.sub)
+function generate_mlir(::Val{:-}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_with_result(julia.sub)
 end
 
-function generate_mlir(::Val{:*}, rettype::Type{<:MVector}, sig::Any)
-    return single_op_wrapper_output_is_result(tosa.matmul)
+function generate_mlir(::Val{:*}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_with_result(julia.mul)
 end
 
+function generate_mlir(::Val{:/}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_with_result(julia.div)
+end
 
 
 ### PREDICATES ###
