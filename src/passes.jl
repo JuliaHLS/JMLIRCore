@@ -30,11 +30,9 @@ function run!(pass::IR.AbstractPass, mod::IR.Module, ctx)
         @assert is_registered_operation(opname, ctx) "$opname is not registered"
         opm = IR.OpPassManager(pm, opname)
         IR.add_owned_pass!(opm, mlir_pass)
-        println("Added owned pass")
     end
 
     status = API.mlirPassManagerRunOnOp(pm, IR.Operation(mod))
-    println("status: $status")
 end
 
 location(operation) = Location(API.mlirOperationGetLocation(operation))
@@ -103,47 +101,43 @@ struct LowerJuliaAdd <: IR.AbstractPass end
 IR.opname(::LowerJuliaAdd) = "func.func"
 
 function IR.pass_run(::LowerJuliaAdd, func_op)
-    println("RUNNING CUSTOM PASS")
     block = get_first_block(func_op)
+
+    replace_ops = [] #Dict{IR.Operation, IR.Operation}()
 
     for op in IR.OperationIterator(block)
         if name(op) == "julia.add"
             operands = collect_operands(op)
             types = IR.julia_type.(IR.type.(operands))
 
-            
-            rewriter = API.mlirIRRewriterCreateFromOp(op)
+            prev_op = op
+            prev_ref = operands[1]
 
-            GC.@preserve rewriter begin
-                # results = collect_results(op)
-                # results = get_type
-
-                println("Operands : $operands")
-                # println("new type: ", IR.result(op, IR.nresults(op)))
-                println("TYPES: $types")
-
-                if length(operands) == 2
-                    if types[1] <: Integer && types[2] <: Integer
-                        new_op = arith.addi(operands...)
-                    elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                        new_op = arith.addf(operands...)
-                    else
-                        error("Error in LowerJuliaAdd pass, unrecognized return signature $types")
-                    end
-
-                    IR.insert_after!(block, op, new_op)
-                    API.mlirRewriterBaseReplaceOpWithOperation(rewriter, op, new_op)
+            for new_ref in operands[2:end]
+                if types[1] <: Integer && types[2] <: Integer
+                    new_op = arith.addi(prev_ref, new_ref)
+                elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
+                    new_op = arith.addf(prev_ref, new_ref)
+                else
+                    error("Error in LowerJuliaAdd pass, unrecognized return signature $types")
                 end
 
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
             end
 
-            # need to use the Rewriter to replace the op
-
-            # IR.rmfromparent!(op)
-
-            # ret_op = op
-            # break
+            push!(replace_ops, [op, prev_op])
         end
+    end
+
+    for (original, replacement) in replace_ops
+        rewriter = API.mlirIRRewriterCreateFromOp(original)
+
+        GC.@preserve rewriter begin
+            API.mlirRewriterBaseReplaceOpWithOperation(rewriter, original, replacement)
+        end
+        API.mlirIRRewriterDestroy(rewriter)
     end
 end
 
