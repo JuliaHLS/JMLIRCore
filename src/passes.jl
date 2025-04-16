@@ -63,7 +63,7 @@ IR.opname(::LowerJuliaArith) = "func.func"
 function IR.pass_run(::LowerJuliaArith, func_op)
     replace_ops = []
 
-    function unroll_operation!(op::IR.Operation, block, fn_int::Function, fn_float)
+    function unroll_operation!(op::IR.Operation, block, fn_int::Function, fn_float::Function)
         operands = collect_operands(op)
         types = IR.julia_type.(IR.type.(operands))
 
@@ -73,9 +73,9 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         for new_ref in operands[2:end]
             if types[1] <: Integer && types[2] <: Integer
-                new_op = arith.addi(prev_val, new_ref)
+                new_op = fn_int(prev_val, new_ref)
             elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                new_op = arith.addf((prev_val), new_ref)
+                new_op = fn_float((prev_val), new_ref)
             else
                 error("Error in LowerJuliaArith pass, unrecognized return signature $types")
             end
@@ -99,9 +99,10 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                 elseif name(op) == "julia.sub"
                     unroll_operation!(op, block, arith.subi, arith.subf)
                 elseif name(op) == "julia.mul"
-                    unroll_operation!(op, block, arith.subi, arith.subf)
+                    unroll_operation!(op, block, arith.muli, arith.mulf)
                 elseif name(op) == "julia.div"
-                    unroll_operation!(op, block, arith.subi, arith.subf)
+                    # TODO: check there is no div equivalent
+                    unroll_operation!(op, block, arith.divf, arith.divf)
                 end
             end
         end
