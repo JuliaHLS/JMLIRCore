@@ -2,6 +2,8 @@ using MLIR.Dialects: arith, func, cf, memref, linalg, tosa, tensor
 using MLIR
 using MLIR.IR
 
+include("dialect.jl")
+
 """ Method Wrapper """
 struct MethodDetails
     sym::Symbol
@@ -103,7 +105,7 @@ end
 
 ### FLOAT ###
 function generate_mlir(::Val{:+}, rettype::Type{<:AbstractFloat}, sig::Any)
-    return single_op_wrapper_with_result(arith.addf)
+    return single_op_wrapper_with_result(julia.add)
 end
 
 function generate_mlir(::Val{:-}, rettype::Type{<:AbstractFloat}, sig::Any)

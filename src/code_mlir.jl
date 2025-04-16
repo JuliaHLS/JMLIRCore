@@ -3,6 +3,7 @@ include("intrinsics.jl")
 include("blocks.jl")
 include("expressions.jl")
 include("MLIRInterpreter.jl")
+include("passes.jl")
 
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
@@ -30,9 +31,9 @@ end
 "Translate typed IR into MLIR"
 function code_mlir(f, types)
     ### Setup the context ###
-    if !IR._has_context()
-        ctx = IR.Context()
-    end
+    # if !IR._has_context()
+    ctx = IR.Context()
+    # end
 
     # load dialects
     
@@ -118,6 +119,13 @@ function code_mlir(f, types)
     ### Verify validity of the MLIR generated ###
     IR.verifyall(op)
 
+    # mod = 
+    mod = IR.Module(Location())
+    body = IR.body(mod)
+    push!(body, op)
+
+    ### Lower from julia dialect ###
+    run!(LowerJuliaAdd(), mod, ctx)
 
     ### return result ###
     return op
