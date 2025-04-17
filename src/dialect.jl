@@ -71,4 +71,24 @@ function cmp(
     )
 end
 
+# Array initialiser
+function instantiate_mat(elements::Array{Value}; result::IR.Type, location=Location())
+    _results = IR.Type[result,]
+    _operands = Value[elements...,]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "julia.instantiate_mat",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
 end
