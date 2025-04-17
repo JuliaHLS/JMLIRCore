@@ -87,7 +87,7 @@ function eval_mlir(f, args...)
 #     # get the function ptr within the JIT
     fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
-        op::IR.Operation = code_mlir(f, arg_types) 
+        op::IR.Operation = code_mlir(f, arg_types; ctx=ctx) 
 
         # lower to linalg
         external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg))" -o temp_out.mlir`, ctx)
