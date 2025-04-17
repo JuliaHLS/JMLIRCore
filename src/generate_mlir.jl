@@ -136,7 +136,7 @@ function custom_cmpi_pred(predicate)
     end
 end
 
-# Signed integer
+# Generic Comparators
 function generate_mlir(::Val{:(<=)}, rettype::Type{<:Any}, sig::Any)
     return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.le))
 end
@@ -153,9 +153,12 @@ function generate_mlir(::Val{:(>)}, rettype::Type{<:Any}, sig::Any)
     return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.gt))
 end
 
+function generate_mlir(::Val{:(==)}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.eq))
+end
 
-function generate_mlir(::Val{:(===)}, rettype::Type, sig::Any)
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.eq, rettype))
+function generate_mlir(::Val{:(===)}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.eq))
 end
 
 # TODO: check if this should take rettype as a float input, or do this generically
