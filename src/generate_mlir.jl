@@ -146,8 +146,8 @@ function generate_mlir(::Val{:(===)}, rettype::Type{<:Any}, sig::Any)
 end
 
 # TODO: check if this should take rettype as a float input, or do this generically
-function generate_mlir(::Val{Base.ne_float}, rettype::Type{Bool}, sig::Any)
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.ne, rettype))
+function generate_mlir(::Val{:(!=)}, rettype::Type{Bool}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.ne))
 end
 
 function generate_mlir(::Val{Base.not_int}, rettype::Type{Bool}, sig::Any)

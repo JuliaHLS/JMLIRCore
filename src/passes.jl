@@ -168,7 +168,7 @@ function IR.pass_run(::LowerJuliaArith, func_op)
     # TODO: only considering the types from one side!
     function translate_predicate(pred, type)::Int64
         # the offset between signed and unsigned types == 4
-        if type <: Unsigned
+        if type <: Unsigned && Int(pred) >= 2
             return Int(pred) + 4
         else
             return Int(pred)
@@ -186,8 +186,6 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         attributes = collect_attributes(op)
         pred = IR.attr(op, "predicate")
-
-        println("Processing CMP: Operands: $operands, types: $types, ret: $ret, attr: $attributes with pred $pred") 
 
         # TODO: add asserts
         if underlying_type(raw_types[1]) <: Integer && underlying_type(raw_types[2]) <: Integer 
