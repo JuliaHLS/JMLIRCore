@@ -130,45 +130,28 @@ function cmpi_pred(predicate, rettype::Type)
     end
 end
 
+function custom_cmpi_pred(predicate)
+    function (ops...; location=Location())
+      return julia.cmp(ops...; result=IR.Type(Bool), predicate, location)
+    end
+end
+
 # Signed integer
-function generate_mlir(::Val{:(<=)}, rettype::Type{<:Bool}, sig::Val{Tuple{typeof(<=), T, T} where T<:Union{Int128, Int16, Int32, Int64, Int8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.sle, rettype))
+function generate_mlir(::Val{:(<=)}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.le))
 end
 
-function generate_mlir(::Val{:<}, rettype::Type{<:Bool}, sig::Val{Tuple{typeof(<), T, T} where T<:Union{Int128, Int16, Int32, Int64, Int8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.slt, rettype))
+function generate_mlir(::Val{:(<)}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.lt))
 end
 
-function generate_mlir(::Val{:(>=)}, rettype::Type{<:Bool}, sig::Any)#sig::Val{Tuple{typeof(>=), T, T} where T<:Union{Int128, Int16, Int32, Int64, Int8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.sge, rettype))
+function generate_mlir(::Val{:(>=)}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.gt))
 end
 
-function generate_mlir(::Val{:>}, rettype::Type{<:Bool}, sig::Any)#sig::Tuple{typeof(>), T, T} where T<:Union{Int128, Int16, Int32, Int64, Int8})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.sgt, rettype))
+function generate_mlir(::Val{:(>)}, rettype::Type{<:Any}, sig::Any)
+    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.gt))
 end
-
-
-# unsigned
-function generate_mlir(::Val{:(<=)}, rettype::Type{<:Bool}, sig::Val{Tuple{typeof(<=), T, T} where T<:Union{UInt128, UInt16, UInt32, UInt64, UInt8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.ule, rettype))
-end
-
-function generate_mlir(::Val{:<}, rettype::Type{<:Bool}, sig::Val{Tuple{typeof(<), T, T} where T<:Union{UInt128, UInt16, UInt32, UInt64, UInt8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.ult, rettype))
-end
-
-# TODO: can't currently be reached, as signature from Julia is wrong and doesn't take types into consideration
-function generate_mlir(::Val{:(>=)}, rettype::Type{<:Bool}, sig::Val{Tuple{typeof(>=), T, T} where T<:Union{UInt128, UInt16, UInt32, UInt64, UInt8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.uge, rettype))
-end
-
-# TODO: can't currently be reached, as signature from Julia is wrong and doesn't take types into consideration
-function generate_mlir(::Val{:>}, rettype::Type{<:Bool}, sig::Val{Tuple{typeof(>), T, T} where T<:Union{UInt128, UInt16, UInt32, UInt64, UInt8}})
-    return single_op_wrapper_no_result(cmpi_pred(Predicates.ugt, rettype))
-end
-
-
-# TODO: add float and Fixed Point
 
 
 function generate_mlir(::Val{:(===)}, rettype::Type, sig::Any)

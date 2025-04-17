@@ -50,11 +50,21 @@ end
 function collect_results(op::IR.Operation)
     results = []
 
-    for i in 1:IR.nresults(op)
+    for i ∈ 1:IR.nresults(op)
         push!(results, IR.result(op, i))
     end
 
     return results
+end
+
+function collect_attributes(op::IR.Operation)
+    attributes = []
+
+    for i ∈ 1:IR.nattrs(op)
+        push!(attributes, IR.attr(op, i))
+    end
+
+    return attributes
 end
 
 
@@ -139,6 +149,59 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         end
     end
 
+    function underlying_type(type::IR.Type)
+        if IR.istensor(type) == AbstractArray 
+            if IR.julia_type(eltype(type)) <: Integer
+                return Integer
+            elseif IR.julia_type(eltype(type)) <: AbstractFloat
+                return AbstractFloat
+            else
+                error("Unrecognized tensor type: $(IR.julia_type(eltype(type)))")
+            end
+        elseif IR.julia_type(type) <: Integer || IR.julia_type(type) <: AbstractFloat
+            return IR.julia_type(type)
+        else 
+            error("Received unrecognized type when Lowering julia to MLIR, Type: $(type)")
+        end
+    end
+
+    # TODO: only considering the types from one side!
+    function translate_predicate(pred, type)::Int64
+        # the offset between signed and unsigned types == 4
+        if type <: Unsigned
+            return Int(pred) + 4
+        else
+            return Int(pred)
+        end
+    end
+
+
+    # TODO: turn into proper dynamic dispatch
+    function lower_cmp!(op::IR.Operation, block)
+        operands = collect_operands(op)
+        raw_types = IR.type.(operands)
+        types = IR.julia_type.(raw_types)
+
+        ret = IR.type.(collect_results(op))[1]
+
+        attributes = collect_attributes(op)
+        pred = IR.attr(op, "predicate")
+
+        println("Processing CMP: Operands: $operands, types: $types, ret: $ret, attr: $attributes with pred $pred") 
+
+        # TODO: add asserts
+        if underlying_type(raw_types[1]) <: Integer && underlying_type(raw_types[2]) <: Integer 
+            new_op = arith.cmpi(operands...; result=IR.Type(Bool), predicate=translate_predicate(pred, types[1]))
+        elseif underlying_type(raw_types[1]) <: AbstractFloat && underlying_type(raw_types[2]) <: AbstractFloat
+            new_op = arith.cmpf(operands...; result=IR.Type(Bool), predicate=translate_predicate(pred, types[1]))
+        else
+            error("Error: unable to translate julia.cmp with types: $types")
+        end
+
+        IR.insert_after!(block, op, new_op)
+        push!(replace_ops, [op, new_op])
+    end
+
 
 
     for region in IR.RegionIterator(func_op)
@@ -156,6 +219,8 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                 elseif name(op) == "julia.div"
                     # TODO: check there is no div equivalnet
                     unroll_operation!(op, block, arith.divf, arith.divf)
+                elseif name(op) == "julia.cmp"
+                    lower_cmp!(op, block)
                 end
             end
         end
