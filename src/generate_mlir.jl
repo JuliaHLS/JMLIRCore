@@ -60,26 +60,9 @@ function generate_mlir(op, rettype, sig)
     error("Error: No mlir translation defined for $op with rettype: $rettype and signature: $sig. Please Modify `generate_mlir.jl`")
 end
 
+#### GENERIC OPERATIONS ####
 
-### Number Type Specific ###
-function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
-    return single_op_wrapper_out_is_result(arith.shrui)
-end
-
-function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
-    return single_op_wrapper_out_is_result(arith.shrui)
-end
-
-function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer}, sig::Any)
-    return single_op_wrapper_out_is_result(arith.remsi)
-end
-
-function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat}, sig::Any)
-    return single_op_wrapper_with_result(arith.sitofp)
-end
-
-
-### Generic Arithmetic ###
+### ARITHMETIC ###
 function generate_mlir(::Val{:+}, rettype::Type{<:Any}, sig::Any)
     return single_op_wrapper_with_result(julia.add)
 end
@@ -98,23 +81,7 @@ end
 
 
 ### PREDICATES ###
-
-# predicate target helper
-function cmpi_pred(predicate, rettype::Type)
-    if rettype === float
-        function (ops...; location=Location())
-          return arith.cmpf(ops...; result=IR.Type(Bool), predicate, location)
-        end
-    elseif rettype <: Integer
-        function (ops...; location=Location())
-          return arith.cmpi(ops...; result=IR.Type(Bool), predicate, location)
-        end
-    else
-        error("Unrecognized predicate type: $rettype")
-    end
-end
-
-function custom_cmpi_pred(predicate)
+function cmpi_pred(predicate)
     function (ops...; location=Location())
       return julia.cmp(ops...; result=IR.Type(Bool), predicate, location)
     end
@@ -122,46 +89,51 @@ end
 
 # Generic Comparators
 function generate_mlir(::Val{:(<=)}, rettype::Type{<:Any}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.le))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.le))
 end
 
 function generate_mlir(::Val{:(<)}, rettype::Type{<:Any}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.lt))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.lt))
 end
 
 function generate_mlir(::Val{:(>=)}, rettype::Type{<:Any}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.gt))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.gt))
 end
 
 function generate_mlir(::Val{:(>)}, rettype::Type{<:Any}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.gt))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.gt))
 end
 
 function generate_mlir(::Val{:(==)}, rettype::Type{<:Any}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.eq))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.eq))
 end
 
 function generate_mlir(::Val{:(===)}, rettype::Type{<:Any}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.eq))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.eq))
 end
 
-# TODO: check if this should take rettype as a float input, or do this generically
 function generate_mlir(::Val{:(!=)}, rettype::Type{Bool}, sig::Any)
-    return single_op_wrapper_no_result(custom_cmpi_pred(julia.predicate.ne))
-end
-
-function generate_mlir(::Val{Base.not_int}, rettype::Type{Bool}, sig::Any)
-    Base.not_int => function (block, args; location=Location())
-        arg = only(args)
-        mT = IR.type(arg)
-        T = IR.julia_type(mT)
-        ones = IR.result(
-          push!(block, arith.constant(; value=typemax(UInt64) % T, result=mT, location)),
-        )
-    return push!(block, arith.xori(arg, ones; location))
-  end
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.ne))
 end
 
 
 
+#### SPECIALISED OPERATIONS ####
+
+### Number/Dialects/Type Specific Operations ###
+function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
+    return single_op_wrapper_out_is_result(arith.shrui)
+end
+
+function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
+    return single_op_wrapper_out_is_result(arith.shrui)
+end
+
+function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer}, sig::Any)
+    return single_op_wrapper_out_is_result(arith.remsi)
+end
+
+function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat}, sig::Any)
+    return single_op_wrapper_with_result(arith.sitofp)
+end
 
