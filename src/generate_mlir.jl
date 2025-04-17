@@ -112,7 +112,7 @@ function generate_mlir(::Val{:(===)}, rettype::Type{<:Any}, sig::Any)
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.eq))
 end
 
-function generate_mlir(::Val{:(!=)}, rettype::Type{Bool}, sig::Any)
+function generate_mlir(::Val{:(!=)}, rettype::Type{Any}, sig::Any)
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.ne))
 end
 
