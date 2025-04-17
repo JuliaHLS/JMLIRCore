@@ -51,22 +51,6 @@ end
         push!(block, fop(args...; output=result, location))
 end
 
-
-# Enumerate the Predicates
-module Predicates
-    const eq = 0
-    const ne = 1
-    const slt = 2
-    const sle = 3
-    const sgt = 4
-    const sge = 5
-    const ult = 6
-    const ule = 7
-    const ugt = 8
-    const uge = 9
-end
-
-
 ########################
 ###  GENERATE MLIR   ###
 ########################
