@@ -145,7 +145,7 @@ end
 # Array operations
 function generate_mlir(::Val{:(MArray)}, rettype::Type{<:MVector{N,T}}) where {N, T}
     println("Received array initialiser")
-    return single_op_wrapper_vector_args(julia.instantiate_mat)
+    return single_op_wrapper_vector_args(julia.mat_inst)
 end
 
 

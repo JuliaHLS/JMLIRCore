@@ -28,7 +28,7 @@ module JuliaPasses
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa
+using MLIR.Dialects: arith, tosa, tensor
 
 
 location(operation) = Location(API.mlirOperationGetLocation(operation))
@@ -37,8 +37,8 @@ block(operation) = Block(API.mlirOperationGetBlock(operation), false)
 parent_operation(operation) = Operation(API.mlirOperationGetParentOperation(operation), false)
 dialect(operation) = first(split(name(operation), '.')) |> Symbol
 
-function collect_operands(op::IR.Operation)
-    operands = []
+function collect_operands(op::IR.Operation)::Vector{IR.Value}
+    operands::Vector{IR.Value} = []
 
     for i in 1:IR.noperands(op)
         push!(operands, IR.operand(op, i))
@@ -68,11 +68,59 @@ function collect_attributes(op::IR.Operation)
 end
 
 
+
+struct LowerJuliaMat <: IR.AbstractPass end
+
+IR.opname(::LowerJuliaMat) = "func.func"
+
+function IR.pass_run(::LowerJuliaMat, func_op)
+    println("Running LowerJuliaMat")
+    
+    replace_ops = []
+
+    for region in IR.RegionIterator(func_op)
+        for block in IR.BlockIterator(region)
+            for op in IR.OperationIterator(block)
+                if name(op) == "julia.mat_inst"
+                    operands = collect_operands(op)
+                    types = IR.julia_type.((IR.type.(operands)))
+
+                    ret = IR.type.(collect_results(op))[1]
+
+                    if IR.istensor(ret)
+                        new_op = tensor.from_elements(operands,result=ret)
+
+                        IR.insert_after!(block, op, new_op)
+                    else
+                        error("Error: incorrect types used for julia.mat_inst")
+                    end
+
+                    push!(replace_ops, [op, new_op])
+                end
+            end
+        end
+    end
+
+    for (original, replacement) in replace_ops
+        rewriter = API.mlirIRRewriterCreateFromOp(original)
+
+        GC.@preserve rewriter begin
+            API.mlirRewriterBaseReplaceOpWithOperation(rewriter, original, replacement)
+        end
+        API.mlirIRRewriterDestroy(rewriter)
+    end
+
+end
+
+
+
+
 struct LowerJuliaArith <: IR.AbstractPass end
 
 IR.opname(::LowerJuliaArith) = "func.func"
 
 function IR.pass_run(::LowerJuliaArith, func_op)
+    println("Running LowerJuliaArith")
     replace_ops = []
 
     function unroll_operation!(op::IR.Operation, block, fn_int::Function, fn_float::Function)

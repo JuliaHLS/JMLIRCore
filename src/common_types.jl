@@ -41,20 +41,10 @@ end
 
 
 ## StaticArrays 
-function IR.Type(T::Core.Type{<:MArray}; context::IR.Context=context())
+function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
     type = IR.Type(T.parameters[2])
 
     return IR.TensorType(dims, type)
 end
-
-
-function IR.Type(T::Core.Type{<:SArray}; context::IR.Context=context())
-    dims::Vector{Int64} = collect(T.parameters[1].parameters)
-    type = IR.Type(T.parameters[2])
-
-    return IR.TensorType(dims, type)
-end
-
-
 
