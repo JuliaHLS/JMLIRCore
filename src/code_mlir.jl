@@ -29,15 +29,8 @@ end
 
 
 "Translate typed IR into MLIR"
-function code_mlir(f, types)
-    ### Setup the context ###
-    # if !IR._has_context()
-    ctx = IR.Context()
-    # end
-
+function code_mlir(f, types; ctx = IR.Context())
     # load dialects
-    
-
     for dialect in (:func, :cf, :memref, :linalg, :tensor)
         IR.register_dialect!(IR.DialectHandle(dialect))
     end
