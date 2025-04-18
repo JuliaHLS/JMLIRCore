@@ -16,6 +16,9 @@ Base.Experimental.@overlay MLIR_MT Base.:-(a::MVector{N, T}, b::MVector{N, T}) w
 
 Base.Experimental.@overlay MLIR_MT Base.:*(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = mul_type(a,b)::MVector{N, T}
 
-Base.Experimental.@overlay MLIR_MT MVector{N, T}(x::Tuple) where {N, T} = new_matrix(x)::MVector{N, T}
+Base.Experimental.@overlay MLIR_MT MVector{N, T}(x::Tuple) where {N, T} = new_vector(x)::MVector{N, T}
+
+Base.Experimental.@overlay MLIR_MT MMatrix{N, T}(x::Tuple) where {N, T} = new_matrix(x)::MMatrix{N, T}
+
 end
 
