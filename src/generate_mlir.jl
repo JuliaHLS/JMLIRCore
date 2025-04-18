@@ -12,8 +12,16 @@ struct MethodDetails
     function MethodDetails(fn::Core.CodeInstance)
         new(clean_mangled_symbol(fn.def.def.name), fn.rettype)
     end
+
+    function MethodDetails(fn::Expr)
+        new(clean_mangled_symbol(fn.head), first(fn.args))
+    end
 end
 
+
+function generate_mlir(md::MethodDetails)
+    return generate_mlir(Val(md.sym), (md.rettype))
+end
 
 function generate_mlir(md::MethodDetails)
     return generate_mlir(Val(md.sym), (md.rettype))
@@ -143,7 +151,7 @@ end
 
 
 # Array operations
-function generate_mlir(::Val{:(MArray)}, rettype::Type{<:MVector{N,T}}) where {N, T}
+function generate_mlir(::Val{:(new)}, rettype::Type{<:MVector{N,T}}) where {N, T}
     println("Received array initialiser")
     return single_op_wrapper_vector_args(julia.mat_inst)
 end

@@ -80,13 +80,14 @@ Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(i
 
 
 # TODO: can I simplify this, given that they are an intrinsic_type?
-const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠])
+const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type])
 """ Tag abstract calls with NoinlineCallInfo when needed """
 function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
+        println("arginfo: $arginfo")
         if first(arginfo.argtypes) isa Core.Const && first(arginfo.argtypes).val in NOINLINE_OPERATORS
             (; rt, exct, effects, info) = ret
             return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))

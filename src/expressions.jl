@@ -17,6 +17,7 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         type = IR.Type(val_type)
         
         # extract metadata
+        println("called_func: $called_func")
         fop! = intrinsic_to_mlir(called_func)
 
         # filter out unwanted arguments
@@ -36,8 +37,28 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         context.values[context.sidx] = res
     elseif Meta.isexpr(inst, :code_coverage_effect)
         # Skip
+    elseif Meta.isexpr(inst, :new)
+        println("Processing call to new")
+        val_type = context.stmt[:type]
+        if !(val_type <: ScalarTypes)
+          error("type $val_type is not supported")
+        end
+
+        # store type as IR.Type
+        type = IR.Type(val_type)
+        
+        # extract metadata
+        println("struct: $(inst.head)")
+        fop! = intrinsic_to_mlir(inst)
+
+        extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
+
+        args = get_value.(extracted_args, context, blocks)
+        res = IR.result(fop!(blocks.current_block, args; result=type::Union{Nothing,IR.Type}))
+
+        context.values[context.sidx] = res
     else
-        error("Unknown expr: $inst")
+        error("Unknown expr: $inst of type $(typeof(inst))")
     end
 
 end
