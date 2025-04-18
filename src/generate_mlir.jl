@@ -151,7 +151,19 @@ end
 
 
 # Array operations
-function generate_mlir(::Val{:(new)}, rettype::Type{<:MVector{N,T}}) where {N, T}
+# implicit initialiser
+function generate_mlir(::Val{:(MArray)}, rettype::Type{<:MArray{S, T, M, N}}) where {S, T, M, N}
+    println("Received array initialiser")
+    return single_op_wrapper_vector_args(julia.mat_inst)
+end
+
+function generate_mlir(::Val{:(MVector)}, rettype::Type{<:MVector{N,T}}) where {N, T}
+    println("Received array initialiser")
+    return single_op_wrapper_vector_args(julia.mat_inst)
+end
+
+# explicit initialiser
+function generate_mlir(::Val{:(new)}, rettype::Type{<:MArray{S, T, M, N}}) where {S, T, M, N}
     println("Received array initialiser")
     return single_op_wrapper_vector_args(julia.mat_inst)
 end

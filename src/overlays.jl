@@ -10,15 +10,13 @@ Base.Experimental.@MethodTable MLIR_MT
 # Note: these specific functions aim to resolve ambiguous type inference
 # to help the typ inference passes correctly infer their target. This is
 # not arbitrarily true for other functions
-Base.Experimental.@overlay MLIR_MT Base.:+(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = add_type(a,b)::MVector{N, T}
+Base.Experimental.@overlay MLIR_MT Base.:+(a::MArray{S, T, M, N}, b::MArray{S, T, M, N}) where {S, T, M, N} = add_type(a,b)::MArray{S, T, M, N}
 
-Base.Experimental.@overlay MLIR_MT Base.:-(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = sub_type(a,b)::MVector{N, T}
+Base.Experimental.@overlay MLIR_MT Base.:-(a::MArray{S, T, M, N}, b::MArray{S, T, M, N}) where {S, T, M, N} = sub_type(a,b)::MArray{S, T, M, N}
 
-Base.Experimental.@overlay MLIR_MT Base.:*(a::MVector{N, T}, b::MVector{N, T}) where {N, T} = mul_type(a,b)::MVector{N, T}
+Base.Experimental.@overlay MLIR_MT Base.:*(a::MArray{S, T, M, N}, b::MArray{S, T, M, N}) where {S, T, M, N} = mul_type(a,b)::MArray{S, T, M, N}
 
-Base.Experimental.@overlay MLIR_MT MVector{N, T}(x::Tuple) where {N, T} = new_vector(x)::MVector{N, T}
-
-Base.Experimental.@overlay MLIR_MT MMatrix{N, T}(x::Tuple) where {N, T} = new_matrix(x)::MMatrix{N, T}
+Base.Experimental.@overlay MLIR_MT MArray{S, T, M, N}(x::Tuple) where {S, T, M, N} = new_array(x)::MArray{S, T, M, N}
 
 end
 
