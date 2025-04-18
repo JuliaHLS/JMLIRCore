@@ -42,7 +42,6 @@ end
 
 ## StaticArrays 
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
-    println("T: $T, with type: $(typeof(T))")
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
     type = IR.Type(T.parameters[2])
 

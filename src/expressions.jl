@@ -1,4 +1,5 @@
 include("common_types.jl")
+using LinearAlgebra
 
 function process_expr(inst::Expr, context::Context, blocks::Blocks)
     if Meta.isexpr(inst, :call) || Meta.isexpr(inst, :invoke)
@@ -40,7 +41,9 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
     elseif Meta.isexpr(inst, :new)
         println("Processing call to new")
         val_type = context.stmt[:type]
-        if !(val_type <: ScalarTypes)
+
+        # TODO: tidy once I know what types i want here
+        if !(val_type <: ScalarTypes || val_type <: LinearAlgebra.Adjoint)
           error("type $val_type is not supported")
         end
 

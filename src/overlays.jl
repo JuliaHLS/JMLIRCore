@@ -5,6 +5,7 @@ using StaticArrays
 
 """ Instantiate the binding to a custom, separate MethodTable """
 Base.Experimental.@MethodTable MLIR_MT
+using LinearAlgebra
 
 """ Overlays for Core Operations, e.g +, -, ...) """
 # Note: these specific functions aim to resolve ambiguous type inference
@@ -17,6 +18,8 @@ Base.Experimental.@overlay MLIR_MT Base.:-(a::MArray{S, T, M, N}, b::MArray{S, T
 Base.Experimental.@overlay MLIR_MT Base.:*(a::MArray{S, T, M, N}, b::MArray{S, T, M, N}) where {S, T, M, N} = mul_type(a,b)::MArray{S, T, M, N}
 
 Base.Experimental.@overlay MLIR_MT MArray{S, T, M, N}(x::Tuple) where {S, T, M, N} = new_array(x)::MArray{S, T, M, N}
+
+Base.Experimental.@overlay MLIR_MT LinearAlgebra.Adjoint{T, N}(x::Type{<:MVector{T, N}}) where {T, N} = new_array(x)::LinearAlgebra.Adjoin{T, N}
 
 end
 
