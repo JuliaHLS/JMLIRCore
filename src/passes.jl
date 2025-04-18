@@ -179,16 +179,20 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         for new_ref in operands[2:end]
             if types[1] <: AbstractArray && types[2] <: AbstractArray
-                new_op = fn(prev_val, new_ref, output=ret)
-            # else
-            #     error("Error in LowerJuliaArith pass, unrecognized return signature $types")
-
+                if op == tosa.matmul
+                    new_op = fn(prev_val, new_ref, output=ret)
+                else
+                    new_op = fn(prev_val, new_ref, c=ret)
+                end
+                 
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
                 prev_val = collect_results(prev_op)[1]
 
                 replaced = true
+            else
+                error("Error in LowerJuliaArith pass, unrecognized return signature $types")
             end
         end
 
