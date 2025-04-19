@@ -5,6 +5,7 @@ using MLIR.IR
 using MLIR
 using MLIR.Dialects: arith, func, cf, linalg
 using StaticArrays
+using LinearAlgebra
 
 include("compiler.jl")
 
@@ -43,12 +44,9 @@ end
 ## StaticArrays 
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
-    println("T params: $(collect(T.parameters[1].parameters)) with type: $(typeof(T.parameters[1].parameters))")
-    println("Processing Size: $(size(T))")
 
     if length(dims) == 1
         push!(dims, 1)
-        println("new dims: $dims")
     end
 
     type = IR.Type(T.parameters[2])
@@ -57,7 +55,7 @@ function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
 end
 
 # Adjoint
-function IR.Type(T::Core.Type{<:Adjoint}; context::IR.Context=context())
+function IR.Type(T::Core.Type{<:LinearAlgebra.Adjoint}; context::IR.Context=context())
     dims = size(T)
     ret_type = IR.Type(eltype(T))
 

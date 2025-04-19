@@ -89,7 +89,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 
                     if IR.istensor(ret)
                         new_op = tensor.from_elements(operands,result=ret)
-
                         IR.insert_after!(block, op, new_op)
                     else
                         error("Error: incorrect types used for julia.mat_inst")
@@ -97,10 +96,16 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 
                     push!(replace_ops, [op, new_op])
                 elseif name(op) == "julia.mat_adjoint"
-                    operands = collect_operands(op)
-                    types = IR.julia_type.((IR.type.(operands)))
+                    # create permutation map
+                    target_array = IR.DenseElementsAttribute([1,0])
+                    ret = IR.type.(collect_results(op))[1]
 
-                    println("Operands $operands, types: $types")
+                    # create transpose op
+                    new_op = tosa.transpose(first(collect_operands(op)), IR.NamedAttribute("perms", target_array), output=ret)
+
+                    # insert into the program
+                    IR.insert_after!(block, op, new_op)
+                    push!(replace_ops, [op, new_op])
                 end
             end
         end
