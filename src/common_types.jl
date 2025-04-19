@@ -43,8 +43,24 @@ end
 ## StaticArrays 
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
+    println("T params: $(collect(T.parameters[1].parameters)) with type: $(typeof(T.parameters[1].parameters))")
+    println("Processing Size: $(size(T))")
+
+    if length(dims) == 1
+        push!(dims, 1)
+        println("new dims: $dims")
+    end
+
     type = IR.Type(T.parameters[2])
 
     return IR.TensorType(dims, type)
+end
+
+# Adjoint
+function IR.Type(T::Core.Type{<:Adjoint}; context::IR.Context=context())
+    dims = size(T)
+    ret_type = IR.Type(eltype(T))
+
+    return IR.TensorType(dims, ret_type)
 end
 

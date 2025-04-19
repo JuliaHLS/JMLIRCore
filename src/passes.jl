@@ -96,6 +96,11 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                     end
 
                     push!(replace_ops, [op, new_op])
+                elseif name(op) == "julia.mat_adjoint"
+                    operands = collect_operands(op)
+                    types = IR.julia_type.((IR.type.(operands)))
+
+                    println("Operands $operands, types: $types")
                 end
             end
         end

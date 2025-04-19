@@ -48,7 +48,8 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         end
 
         # store type as IR.Type
-        type = IR.Type(val_type)
+        println("Returning with type: $(eltype(val_type))")
+        
         
         # extract metadata
         println("struct: $(inst.head)")
@@ -57,6 +58,10 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
 
         args = get_value.(extracted_args, context, blocks)
+
+        # perform transpose
+        type = IR.Type(val_type)
+
         res = IR.result(fop!(blocks.current_block, args; result=type::Union{Nothing,IR.Type}))
 
         context.values[context.sidx] = res

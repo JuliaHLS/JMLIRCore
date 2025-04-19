@@ -19,7 +19,9 @@ Base.Experimental.@overlay MLIR_MT Base.:*(a::MArray{S, T, M, N}, b::MArray{S, T
 
 Base.Experimental.@overlay MLIR_MT MArray{S, T, M, N}(x::Tuple) where {S, T, M, N} = new_array(x)::MArray{S, T, M, N}
 
-Base.Experimental.@overlay MLIR_MT LinearAlgebra.Adjoint{T, N}(x::Type{<:MVector{T, N}}) where {T, N} = new_array(x)::LinearAlgebra.Adjoin{T, N}
+# Base.Experimental.@overlay MLIR_MT MVector{T, N}(x::Tuple) where {T, N} = MMatrix{T, N}(x)
+
+# Base.Experimental.@overlay MLIR_MT LinearAlgebra.Adjoint{T, N}(x::Type{<:MVector{T, N}}) where {T, N} = new_array(x)::
 
 end
 
