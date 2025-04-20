@@ -106,12 +106,82 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                     # insert into the program
                     IR.insert_after!(block, op, new_op)
                     push!(replace_ops, [op, new_op])
+                elseif name(op) == "julia.mat_setindex"
+                    operands = collect_operands(op)
+                    types = IR.julia_type.((IR.type.(operands)))
+                    ret = IR.type.(collect_results(op))[1]
+
+                    scalar::Value = operands[1]
+                    dest::Value = operands[2]
+                    indices::Vector{Value} = operands[3:end]
+
+                    println("Received Operands: $operands, types: $types, ret: $ret")
+                    println("Operands: $(typeof(operands)), types: $(typeof(types)), ret: $(typeof(ret))")
+                    println("Scalar $scalar, dest $dest, indices $indices")
+
+                    # convert input type to indextype
+                    new_indices::Vector{Value} = []
+
+                    sub_const = arith.constant(;value=1,result=IR.Type(Int))
+                    IR.insert_before!(block, op, sub_const)
+
+                    for index in indices
+                        # if type(index) != IR.IndexType()
+                            # IR.type!(scalar, IR.IndexType())
+                            # new_scalar = arith.constant(;result=IR.IndexType(), value=scalar)
+                            sub_op = arith.subi(index, IR.result(sub_const))
+                            IR.insert_before!(block, op, sub_op)
+
+                            index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
+                            IR.insert_before!(block, op, index_op)
+
+                            res = IR.result(index_op, 1)
+                            println("Got res $res")
+                            push!(new_indices, res)
+                        # else
+                            # push!(new_indices, index)
+                        # end
+                    end
+
+                    # deal with vector indices
+                    if length(new_indices) == 1
+                        println("Got eltype: $(size(dest))")
+
+                        
+                        index_op = arith.constant(;value=0,result=IR.Type(Int))
+                        IR.insert_before!(block, op, index_op)
+
+                        idx_cast_op = arith.index_cast(IR.result(index_op, 1); out=IR.IndexType())
+                        IR.insert_before!(block, op, idx_cast_op)
+
+                        push!(new_indices, IR.result(idx_cast_op, 1))
+                        
+                        if first(size(dest)) == 1 && last(size(dest)) != 1
+                            new_indices = reverse(new_indices)
+                        end
+                    end
+
+                    new_op = tensor.insert(scalar, dest, new_indices; result=ret)
+                    IR.insert_after!(block, op, new_op)
+
+                    push!(replace_ops, [op, new_op])
+
+                    # fix the rewrite issue from Julia's IR
+                    ctx = context(op)
+                    rewriter = API.mlirIRRewriterCreate(ctx)
+
+                    GC.@preserve rewriter begin
+                        API.mlirRewriterBaseReplaceAllUsesExcept(rewriter, dest, IR.result(new_op, 1), new_op)
+                    end
+
+                    API.mlirIRRewriterDestroy(rewriter)
                 end
             end
         end
     end
 
     for (original, replacement) in replace_ops
+        println("Replacing: $original with $replacement")
         rewriter = API.mlirIRRewriterCreateFromOp(original)
 
         GC.@preserve rewriter begin
@@ -189,10 +259,10 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         for new_ref in operands[2:end]
             if types[1] <: AbstractArray && types[2] <: AbstractArray
-                if op == tosa.matmul
-                    new_op = fn(prev_val, new_ref, output=ret)
-                else
+                if fn === tosa.matmul
                     new_op = fn(prev_val, new_ref, c=ret)
+                else
+                    new_op = fn(prev_val, new_ref, output=ret)
                 end
                  
                 IR.insert_after!(block, prev_op, new_op)

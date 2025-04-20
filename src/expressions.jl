@@ -24,7 +24,11 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         # filter out unwanted arguments
         extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
 
+        println("Working with extracted_args: $extracted_args")
+        println("Working with extracted_args: $(typeof.(extracted_args))")
+
         args = get_value.(extracted_args, context, blocks)
+        println("Working with args: $args")
 
         # TODO: investigate the feasibility of reintroducing location in Julia v1.12
         # location = Location(string(context.line.file), context.line.line, 0)
