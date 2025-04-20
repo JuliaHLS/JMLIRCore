@@ -170,5 +170,13 @@ function generate_mlir(::Val{:(new)}, rettype::Type{<:LinearAlgebra.Adjoint{T, M
     return single_op_wrapper_output_is_result(julia.mat_adjoint)
 end
 
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+        push!(block, fop(args...; output=result, location))
+
+function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    push!(block, julia.mat_setindex(args[2], args[1], args[3:end]; location))
+end
+
 
 

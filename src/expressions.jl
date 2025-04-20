@@ -4,6 +4,7 @@ using LinearAlgebra
 function process_expr(inst::Expr, context::Context, blocks::Blocks)
     if Meta.isexpr(inst, :call) || Meta.isexpr(inst, :invoke)
         val_type = context.stmt[:type]
+
         if !(val_type <: ScalarTypes)
           error("type $val_type is not supported")
         end

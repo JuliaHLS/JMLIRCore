@@ -33,7 +33,7 @@ Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
 
 
-ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray}
+ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray, Any}
 
 # Extend MLIR.jl
 function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
@@ -62,3 +62,6 @@ function IR.Type(T::Core.Type{<:LinearAlgebra.Adjoint}; context::IR.Context=cont
     return IR.TensorType(dims, ret_type)
 end
 
+function IR.Type(T::Core.Type{Any}; context::IR.Context=context())
+    return nothing
+end

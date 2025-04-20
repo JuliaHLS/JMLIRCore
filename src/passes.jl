@@ -201,8 +201,8 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                 prev_val = collect_results(prev_op)[1]
 
                 replaced = true
-            else
-                error("Error in LowerJuliaArith pass, unrecognized return signature $types")
+            # else
+            #     error("Error in LowerJuliaArith pass, unrecognized return signature $types")
             end
         end
 

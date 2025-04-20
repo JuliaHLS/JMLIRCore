@@ -111,4 +111,39 @@ function mat_adjoint(input1::Value; output::IR.Type, location=Location())
     )
 end
 
+function mat_setindex(
+    scalar::Value,
+    dest::Value,
+    indices::Vector{Value};
+    result=nothing::Union{Nothing,IR.Type},
+    location=Location(),
+)
+    _results = IR.Type[]
+
+    if result == nothing
+        dest_op = IR.type(dest)
+        println("got dest op type: $dest_op")
+        result = dest_op
+    end
+
+    _operands = Value[scalar, dest, indices...]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+    !isnothing(result) && push!(_results, result)
+
+    return IR.create_operation(
+        "julia.mat_setindex",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=(length(_results) == 0 ? nothing : _results),
+        result_inference=false,
+    )
+end
+
+
+
 end
