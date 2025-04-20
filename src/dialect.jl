@@ -112,12 +112,15 @@ function mat_adjoint(input1::Value; output::IR.Type, location=Location())
 end
 
 function mat_setindex(
-    scalar::Value,
-    dest::Value,
-    indices::Vector{Value};
+    args::Vector{Value};
     result=nothing::Union{Nothing,IR.Type},
     location=Location(),
 )
+    # unpack the result
+    dest::Value = args[1]
+    scalar::Value = args[2]
+    indices::Vector{Value} = args[3:end]
+
     _results = IR.Type[]
 
     if result == nothing

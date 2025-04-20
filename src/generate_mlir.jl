@@ -175,7 +175,7 @@ end
 
 function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
     return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
-    push!(block, julia.mat_setindex(args[2], args[1], args[3:end]; location))
+    push!(block, julia.mat_setindex(args; location))
 end
 
 
