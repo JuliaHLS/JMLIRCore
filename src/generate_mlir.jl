@@ -1,23 +1,27 @@
 using MLIR.Dialects: arith, func, cf, memref, linalg, tosa, tensor
 using MLIR
 using MLIR.IR
+using LinearAlgebra
 
 include("dialect.jl")
 
 """ Method Wrapper """
 struct MethodDetails
     sym::Symbol
-    sig::Any
     rettype::DataType
 
     function MethodDetails(fn::Core.CodeInstance)
-        new(clean_mangled_symbol(fn.def.def.name), fn.def.def.sig, fn.rettype)
+        new(clean_mangled_symbol(fn.def.def.name), fn.rettype)
     end
 end
 
 
 function generate_mlir(md::MethodDetails)
-    return generate_mlir(Val(md.sym), (md.rettype), Val(md.sig))
+    return generate_mlir(Val(md.sym), (md.rettype))
+end
+
+function generate_mlir(md::MethodDetails)
+    return generate_mlir(Val(md.sym), (md.rettype))
 end
 
 
@@ -46,6 +50,11 @@ end
         push!(block, fop(args...; location))
 end
 
+@inline function single_op_wrapper_vector_args(fop)
+    return (block::MLIR.IR.Block, args::Vector{Vector{Value}}; result, location=Location()) ->
+        push!(block, fop(args...; result, location))
+end
+
 @inline function single_op_wrapper_output_is_result(fop)
     return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
         push!(block, fop(args...; output=result, location))
@@ -56,26 +65,26 @@ end
 ########################
 
 """ Base method """
-function generate_mlir(op, rettype, sig)
-    error("Error: No mlir translation defined for $op with rettype: $rettype and signature: $sig. Please Modify `generate_mlir.jl`")
+function generate_mlir(op, rettype)
+    error("Error: No mlir translation defined for $op with rettype: $rettype. Please Modify `generate_mlir.jl`")
 end
 
 #### GENERIC OPERATIONS ####
 
 ### ARITHMETIC ###
-function generate_mlir(::Val{:+}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:+}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.add)
 end
 
-function generate_mlir(::Val{:-}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:-}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.sub)
 end
 
-function generate_mlir(::Val{:*}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:*}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.mul)
 end
 
-function generate_mlir(::Val{:/}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:/}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.div)
 end
 
@@ -88,31 +97,31 @@ function cmpi_pred(predicate)
 end
 
 # Generic Comparators
-function generate_mlir(::Val{:(<=)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(<=)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.le))
 end
 
-function generate_mlir(::Val{:(<)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(<)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.lt))
 end
 
-function generate_mlir(::Val{:(>=)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(>=)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.gt))
 end
 
-function generate_mlir(::Val{:(>)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(>)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.gt))
 end
 
-function generate_mlir(::Val{:(==)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(==)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.eq))
 end
 
-function generate_mlir(::Val{:(===)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(===)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.eq))
 end
 
-function generate_mlir(::Val{:(!=)}, rettype::Type{<:Any}, sig::Any)
+function generate_mlir(::Val{:(!=)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.ne))
 end
 
@@ -121,19 +130,49 @@ end
 #### SPECIALISED OPERATIONS ####
 
 ### Number/Dialects/Type Specific Operations ###
-function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
+function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.shrui)
 end
 
-function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer}, sig::Any)
+function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.shrui)
 end
 
-function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer}, sig::Any)
+function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.remsi)
 end
 
-function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat}, sig::Any)
+function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat})
     return single_op_wrapper_with_result(arith.sitofp)
 end
+
+
+# Array operations
+# implicit initialiser
+function generate_mlir(::Val{:(MArray)}, rettype::Type{<:MArray{S, T, M, N}}) where {S, T, M, N}
+    return single_op_wrapper_vector_args(julia.mat_inst)
+end
+
+function generate_mlir(::Val{:(MVector)}, rettype::Type{<:MVector{N,T}}) where {N, T}
+    return single_op_wrapper_vector_args(julia.mat_inst)
+end
+
+# explicit initialiser
+function generate_mlir(::Val{:(new)}, rettype::Type{<:MArray{S, T, M, N}}) where {S, T, M, N}
+    return single_op_wrapper_vector_args(julia.mat_inst)
+end
+
+function generate_mlir(::Val{:(new)}, rettype::Type{<:LinearAlgebra.Adjoint{T, MVector{N, T}}}) where {T, N}
+    return single_op_wrapper_output_is_result(julia.mat_adjoint)
+end
+
+function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    push!(block, julia.mat_setindex(args; location))
+end
+
+function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(julia.mat_getindex)
+end
+
 

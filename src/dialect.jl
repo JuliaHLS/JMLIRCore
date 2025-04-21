@@ -71,4 +71,112 @@ function cmp(
     )
 end
 
+# Array initialiser
+function mat_inst(elements::Array{Value}; result::IR.Type, location=Location())
+    _results = IR.Type[result,]
+    _operands = Value[elements...,]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "julia.mat_inst",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
+# only called for vectors (done in-place by julia otherwise)
+function mat_adjoint(input1::Value; output::IR.Type, location=Location())
+    _results = IR.Type[output,]
+    _operands = Value[input1]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "julia.mat_adjoint",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
+function mat_setindex(
+    args::Vector{Value};
+    result=nothing::Union{Nothing,IR.Type},
+    location=Location(),
+)
+    # unpack the result
+    dest::Value = args[1]
+    scalar::Value = args[2]
+    indices::Vector{Value} = args[3:end]
+
+    _results = IR.Type[]
+
+    if result == nothing
+        dest_op = IR.type(dest)
+        println("got dest op type: $dest_op")
+        result = dest_op
+    end
+
+    _operands = Value[scalar, dest, indices...]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+    !isnothing(result) && push!(_results, result)
+
+    return IR.create_operation(
+        "julia.mat_setindex",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=(length(_results) == 0 ? nothing : _results),
+        result_inference=false,
+    )
+end
+
+function mat_getindex(
+    source::Value,
+    indices::Value;
+    result::IR.Type,
+    # gather_dims, TODO: add support for dims
+    unique=nothing,
+    location=Location(),
+)
+    _results = IR.Type[result,]
+    _operands = Value[source, indices]
+    _owned_regions = Region[]
+    _successors = Block[]
+    # _attributes = NamedAttribute[namedattribute("gather_dims", gather_dims),]
+    _attributes = IR.NamedAttribute[]
+    !isnothing(unique) && push!(_attributes, namedattribute("unique", unique))
+
+    return IR.create_operation(
+        "julia.mat_getindex",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
+
+
+
+
 end

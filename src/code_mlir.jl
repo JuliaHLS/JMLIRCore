@@ -122,6 +122,7 @@ function code_mlir(f, types; ctx = IR.Context())
 
     ### Lower from julia dialect ###
     run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
+    run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
 
     ### return result ###
     return op

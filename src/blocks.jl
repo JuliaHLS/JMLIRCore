@@ -42,17 +42,25 @@ end
 
 
 # get value
-function get_value(x, context::Context, blocks::Blocks)::Value
-  if x isa Core.SSAValue
-    @assert isassigned(context.values, x.id) "value $x was not assigned"
-    context.values[x.id]
-  elseif x isa Core.Argument
-    IR.argument(blocks.entry_block, x.n - 1)
-  elseif x isa ScalarTypes 
-    IR.result(push!(blocks.current_block, arith.constant(; value=x)))
-  else
-    error("could not use value $x inside MLIR")
-  end
+function get_value(x, context::Context, blocks::Blocks)
+    if x isa Core.SSAValue
+        @assert isassigned(context.values, x.id) "value $x was not assigned"
+        context.values[x.id]
+    elseif x isa Core.Argument
+        IR.argument(blocks.entry_block, x.n - 1)
+    elseif x isa ScalarTypes 
+        IR.result(push!(blocks.current_block, arith.constant(; value=x)))
+    elseif x isa Tuple
+        results::Array{IR.Value} = []
+        for init_val ∈ collect(x)
+            println(init_val)
+            ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=init_val)))
+            push!(results, ssa_res)
+        end
+        results::Array{IR.Value}
+    else
+        error("could not use value $x of type $(typeof(x)) inside MLIR. Please review ScalarTypes.")
+    end
 end
 
 

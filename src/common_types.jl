@@ -5,6 +5,7 @@ using MLIR.IR
 using MLIR
 using MLIR.Dialects: arith, func, cf, linalg
 using StaticArrays
+using LinearAlgebra
 
 include("compiler.jl")
 
@@ -32,7 +33,7 @@ Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
 
 
-ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray}
+ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray, Any}
 
 # Extend MLIR.jl
 function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
@@ -41,20 +42,26 @@ end
 
 
 ## StaticArrays 
-function IR.Type(T::Core.Type{<:MArray}; context::IR.Context=context())
+function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
+
+    if length(dims) == 1
+        push!(dims, 1)
+    end
+
     type = IR.Type(T.parameters[2])
 
     return IR.TensorType(dims, type)
 end
 
+# Adjoint
+function IR.Type(T::Core.Type{<:LinearAlgebra.Adjoint}; context::IR.Context=context())
+    dims = size(T)
+    ret_type = IR.Type(eltype(T))
 
-function IR.Type(T::Core.Type{<:SArray}; context::IR.Context=context())
-    dims::Vector{Int64} = collect(T.parameters[1].parameters)
-    type = IR.Type(T.parameters[2])
-
-    return IR.TensorType(dims, type)
+    return IR.TensorType(dims, ret_type)
 end
 
-
-
+function IR.Type(T::Core.Type{Any}; context::IR.Context=context())
+    return nothing
+end
