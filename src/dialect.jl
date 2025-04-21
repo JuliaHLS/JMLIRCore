@@ -147,6 +147,36 @@ function mat_setindex(
     )
 end
 
+function mat_getindex(
+    source::Value,
+    indices::Value;
+    result::IR.Type,
+    # gather_dims, TODO: add support for dims
+    unique=nothing,
+    location=Location(),
+)
+    _results = IR.Type[result,]
+    _operands = Value[source, indices]
+    _owned_regions = Region[]
+    _successors = Block[]
+    # _attributes = NamedAttribute[namedattribute("gather_dims", gather_dims),]
+    _attributes = IR.NamedAttribute[]
+    !isnothing(unique) && push!(_attributes, namedattribute("unique", unique))
+
+    return IR.create_operation(
+        "julia.mat_getindex",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
+
+
 
 
 end

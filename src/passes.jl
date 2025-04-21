@@ -106,6 +106,65 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                     # insert into the program
                     IR.insert_after!(block, op, new_op)
                     push!(replace_ops, [op, new_op])
+                elseif name(op) == "julia.mat_getindex" # TODO: add support for returning arrays
+                    operands = collect_operands(op)
+                    types = IR.julia_type.((IR.type.(operands)))
+
+                    # naively cast to index TODO: only works for single requests
+                    sub_const = arith.constant(;value=1,result=IR.Type(Int))
+                    IR.insert_before!(block, op, sub_const)
+
+                    sub_op = arith.subi(operands[2], IR.result(sub_const))
+                    IR.insert_before!(block, op, sub_op)
+
+                    index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
+                    IR.insert_before!(block, op, index_op)
+
+                    operands[2] = IR.result(index_op)
+
+                    # # convert into a tensor of indices
+                    # idx_tensor = tensor.from_elements([IR.result(index_op)]; result=IR.TensorType([1], IR.IndexType()))
+                    # IR.insert_before!(block, op, idx_tensor)
+
+                    # operands[2] = IR.result(idx_tensor)
+
+
+                    # create operation
+                    gather_dims = IR.DenseArrayAttribute([0])
+                    println("gather_dims $gather_dims")
+                    ret = IR.type.(collect_results(op))[1]
+
+                    # create output type
+                    # ret = IR.TensorType([1], ret)
+
+                    new_indices = operands[2:end]
+
+                    # fix index annotations
+                    if length(new_indices) == 1
+                        println("Got eltype: $(size(operands[1]))")
+
+                        index_op = arith.constant(;value=0,result=IR.Type(Int))
+                        IR.insert_before!(block, op, index_op)
+
+                        idx_cast_op = arith.index_cast(IR.result(index_op, 1); out=IR.IndexType())
+                        IR.insert_before!(block, op, idx_cast_op)
+
+                        push!(new_indices, IR.result(idx_cast_op, 1))
+                        
+                        if first(size(operands[1])) == 1 && last(size(operands[1])) != 1
+                            new_indices = reverse(new_indices)
+                        end
+                    end
+
+
+                    # create transpose op
+                    println("Using ret $ret")
+                    new_op = tensor.extract(operands[1], new_indices; result=ret)
+
+                    # insert into the program
+                    IR.insert_after!(block, op, new_op)
+                    push!(replace_ops, [op, new_op])
+
                 elseif name(op) == "julia.mat_setindex"
                     operands = collect_operands(op)
                     types = IR.julia_type.((IR.type.(operands)))
