@@ -122,16 +122,8 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 
                     operands[2] = IR.result(index_op)
 
-                    # # convert into a tensor of indices
-                    # idx_tensor = tensor.from_elements([IR.result(index_op)]; result=IR.TensorType([1], IR.IndexType()))
-                    # IR.insert_before!(block, op, idx_tensor)
-
-                    # operands[2] = IR.result(idx_tensor)
-
-
                     # create operation
                     gather_dims = IR.DenseArrayAttribute([0])
-                    println("gather_dims $gather_dims")
                     ret = IR.type.(collect_results(op))[1]
 
                     # create output type
@@ -141,8 +133,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 
                     # fix index annotations
                     if length(new_indices) == 1
-                        println("Got eltype: $(size(operands[1]))")
-
                         index_op = arith.constant(;value=0,result=IR.Type(Int))
                         IR.insert_before!(block, op, index_op)
 
@@ -158,7 +148,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 
 
                     # create transpose op
-                    println("Using ret $ret")
                     new_op = tensor.extract(operands[1], new_indices; result=ret)
 
                     # insert into the program
@@ -173,10 +162,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                     scalar::Value = operands[1]
                     dest::Value = operands[2]
                     indices::Vector{Value} = operands[3:end]
-
-                    println("Received Operands: $operands, types: $types, ret: $ret")
-                    println("Operands: $(typeof(operands)), types: $(typeof(types)), ret: $(typeof(ret))")
-                    println("Scalar $scalar, dest $dest, indices $indices")
 
                     # convert input type to indextype
                     new_indices::Vector{Value} = []
@@ -195,7 +180,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                             IR.insert_before!(block, op, index_op)
 
                             res = IR.result(index_op, 1)
-                            println("Got res $res")
                             push!(new_indices, res)
                         # else
                             # push!(new_indices, index)
@@ -204,9 +188,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 
                     # deal with vector indices
                     if length(new_indices) == 1
-                        println("Got eltype: $(size(dest))")
-
-                        
                         index_op = arith.constant(;value=0,result=IR.Type(Int))
                         IR.insert_before!(block, op, index_op)
 
@@ -240,7 +221,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
     end
 
     for (original, replacement) in replace_ops
-        println("Replacing: $original with $replacement")
         rewriter = API.mlirIRRewriterCreateFromOp(original)
 
         GC.@preserve rewriter begin

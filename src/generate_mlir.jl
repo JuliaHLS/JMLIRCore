@@ -13,10 +13,6 @@ struct MethodDetails
     function MethodDetails(fn::Core.CodeInstance)
         new(clean_mangled_symbol(fn.def.def.name), fn.rettype)
     end
-
-    function MethodDetails(fn::Expr)
-        new(clean_mangled_symbol(fn.head), first(fn.args))
-    end
 end
 
 
@@ -172,7 +168,7 @@ end
 
 function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
     return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
-        push!(block, fop(args...; output=result, location))
+    push!(block, julia.mat_setindex(args; location))
 end
 
 function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
