@@ -20,6 +20,12 @@ struct MethodDetails
         fn_sym::Union{Symbol, Nothing} = translate_intrinsic(fn)
         new(clean_mangled_symbol(fn_sym), first(Base.return_types(fn)))
     end
+
+
+    # process Expr, example usecase: instantiating Matrices via a `new` call
+    function MethodDetails(fn::Expr)
+        new(clean_mangled_symbol(fn.head), first(fn.args))
+    end
 end
 
 ## intrinsic to symbol mapping
