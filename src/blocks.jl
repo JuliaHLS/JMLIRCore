@@ -50,10 +50,9 @@ function get_value(x, context::Context, blocks::Blocks)
         IR.argument(blocks.entry_block, x.n - 1)
     elseif x isa ScalarTypes 
         IR.result(push!(blocks.current_block, arith.constant(; value=x)))
-    elseif x isa Tuple
+    elseif x isa Tuple       # process all tuple types
         results::Array{IR.Value} = []
         for init_val ∈ collect(x)
-            println(init_val)
             ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=init_val)))
             push!(results, ssa_res)
         end

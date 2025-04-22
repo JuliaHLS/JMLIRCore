@@ -47,7 +47,6 @@ function code_mlir(f, types; ctx = IR.Context())
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
 
-    println("GOT IR: ", ir)
     result_types = [IR.Type(ret)]
 
     # values
@@ -117,8 +116,6 @@ function code_mlir(f, types; ctx = IR.Context())
     body = IR.body(mod)
     push!(body, op)
 
-
-    println("Produced Module: ", mod)
 
     ### Lower from julia dialect ###
     run!(JuliaPasses.LowerJuliaArith(), mod, ctx)

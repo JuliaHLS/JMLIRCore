@@ -125,7 +125,6 @@ function mat_setindex(
 
     if result == nothing
         dest_op = IR.type(dest)
-        println("got dest op type: $dest_op")
         result = dest_op
     end
 
