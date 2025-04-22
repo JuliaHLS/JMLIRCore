@@ -44,7 +44,7 @@ end
 
 
 """ clean mangled symbols """
-function clean_mangled_symbol(sym::Any)::Symbol
+function clean_mangled_symbol(sym::Symbol)::Symbol
     cleaned = lstrip(String(sym), '#')
     return Symbol(cleaned)
 end

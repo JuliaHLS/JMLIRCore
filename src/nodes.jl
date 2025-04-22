@@ -87,8 +87,6 @@ function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
 
   location = Location() #string(context.line.file), context.line.line, 0)
 
-  println("true_args: $true_args has type: $(typeof(true_args))")
-
   cond_br = cf.cond_br(
     cond,
     true_args,
