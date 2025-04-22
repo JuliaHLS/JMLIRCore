@@ -43,14 +43,19 @@ end
 
 # get value
 function get_value(x, context::Context, blocks::Blocks)
+    println("running get_value for $x")
     if x isa Core.SSAValue
+        println("SSA")
         @assert isassigned(context.values, x.id) "value $x was not assigned"
         context.values[x.id]
     elseif x isa Core.Argument
+        println("arg")
         IR.argument(blocks.entry_block, x.n - 1)
     elseif x isa ScalarTypes 
+        println("scalartype")
         IR.result(push!(blocks.current_block, arith.constant(; value=x)))
-    elseif x isa Tuple
+    elseif x isa Tuple       # process all tuple types
+        println("Running NTuple")
         results::Array{IR.Value} = []
         for init_val ∈ collect(x)
             println(init_val)

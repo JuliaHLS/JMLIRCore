@@ -77,15 +77,18 @@ end
 
 
 function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
-  false_args = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
+  false_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
   cond = get_value(inst.cond, context, blocks)
   @assert length(blocks.bb.succs) == 2 # NOTE: We assume that length(bb.succs) == 2, this might be wrong
   other_dest = only(setdiff(blocks.bb.succs, inst.dest))
-  true_args = get_value.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
+  true_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
   other_dest = blocks.blocks[other_dest]
   dest = blocks.blocks[inst.dest]
 
   location = Location() #string(context.line.file), context.line.line, 0)
+
+  println("true_args: $true_args has type: $(typeof(true_args))")
+
   cond_br = cf.cond_br(
     cond,
     true_args,
@@ -106,6 +109,9 @@ function process_node(inst::ReturnNode, context::Context, blocks::Blocks)
   push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]))
 end
 
+function process_node(inst::Nothing, context::Context, blocks::Blocks)
+    println("Info: Received empty node from Julia IR. Skipping...")
+end
 
 function process_node(inst, context::Context, blocks::Blocks)
   error("unhandled ir $(inst)")

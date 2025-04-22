@@ -13,8 +13,20 @@ struct MethodDetails
     function MethodDetails(fn::Core.CodeInstance)
         new(clean_mangled_symbol(fn.def.def.name), fn.rettype)
     end
+
+    # translate intrinsics (sometimes unavoidable if code templates
+    # are pre-determined)
+    function MethodDetails(fn::Function)
+        fn_sym::Union{Symbol, Nothing} = translate_intrinsic(fn)
+        new(clean_mangled_symbol(fn_sym), first(Base.return_types(fn)))
+    end
 end
 
+## intrinsic to symbol mapping
+translate_intrinsic(::typeof(Base.add_int)) = return :+
+translate_intrinsic(::typeof(Base.sub_int)) = return :-
+translate_intrinsic(::typeof(Base.mul_int)) = return :*
+translate_intrinsic(fn::Any) = return first(methods(fn)).name
 
 function generate_mlir(md::MethodDetails)
     return generate_mlir(Val(md.sym), (md.rettype))
@@ -26,7 +38,7 @@ end
 
 
 """ clean mangled symbols """
-function clean_mangled_symbol(sym::Symbol)::Symbol
+function clean_mangled_symbol(sym::Any)::Symbol
     cleaned = lstrip(String(sym), '#')
     return Symbol(cleaned)
 end
