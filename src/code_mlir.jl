@@ -29,7 +29,7 @@ end
 
 
 "Translate typed IR into MLIR"
-function code_mlir(f, types; ctx = IR.Context())
+function code_mlir(f, types; ctx = IR.context())
     # load dialects
     for dialect in (:func, :cf, :memref, :linalg, :tensor)
         IR.register_dialect!(IR.DialectHandle(dialect))
@@ -94,6 +94,8 @@ function code_mlir(f, types; ctx = IR.Context())
     f_name = nameof(f)
     ftype = IR.FunctionType(input_types, result_types)
 
+    println("here")
+
     # create mlir operation (function call)
     op = IR.create_operation(
         "func.func",
@@ -106,20 +108,24 @@ function code_mlir(f, types; ctx = IR.Context())
         owned_regions=Region[region],
         result_inference=false,
     )
+    println("created_op")
 
 
     ### Verify validity of the MLIR generated ###
     IR.verifyall(op)
+    println("verified")
 
     # mod = 
     mod = IR.Module(Location())
     body = IR.body(mod)
     push!(body, op)
 
+    println("created_module")
 
     ### Lower from julia dialect ###
     run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
     run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
+    println("run passes")
 
     ### return result ###
     return op

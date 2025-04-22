@@ -40,7 +40,7 @@ function external_lowering_mlir_opt!(op::IR.Operation, passes::Cmd , ctx)
     mlir_str = String(take!(mlir_buffer))
 
     # write to temp file for mlir-opt to read
-    open("temp.mlir", "w") do io
+    open("/tmp/temp.mlir", "w") do io
         write(io, mlir_str)
     end
 
@@ -50,7 +50,7 @@ function external_lowering_mlir_opt!(op::IR.Operation, passes::Cmd , ctx)
 
 
     # read from file back into the pipeline
-    ir = read("temp_out.mlir", String)
+    ir = read("/tmp/temp.mlir", String)
 
     ctx = MLIR.API.mlirContextCreate()
     registerAllUpstreamDialects!(ctx)
@@ -66,9 +66,9 @@ end
 
 
 "Execute function using MLIR pipeline"
-function eval_mlir(f, args...)
-    ctx = IR.Context()
-    
+function eval_mlir(f, args...; ctx = IR.context())
+    # registerAllUpstreamDialects!(ctx)
+
     # preprocess arguments
     arg_types = eval(Expr(
             :curly,
@@ -80,44 +80,49 @@ function eval_mlir(f, args...)
 
     # TODO; consider integrating without running type inference twice without modifying fn code_mlir (check the return types function)
     interp = MLIRInterpreter()
+    println("Created MLIRInterpreter")
     _, ret = only(CC.code_ircode(f, processed_arg_types_tuple; interp=interp))
-
+    
 
 
 #     # get the function ptr within the JIT
     fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
-        op::IR.Operation = code_mlir(f, arg_types; ctx=ctx) 
+        println("Running code_mlir")
+        op::IR.Operation = code_mlir(f, arg_types) 
+        println("Produced IR Code")
+
+        ctx = IR.context(op)
 
         # lower to linalg
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg))" -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg))" -o /tmp/temp_out.mlir`, ctx)
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o temp_out.mlir`, ctx) #--one-shot-bufferize --convert-linalg-to-loops --convert-to-llvm -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx) #--one-shot-bufferize --convert-linalg-to-loops --convert-to-llvm -o temp_out.mlir`, ctx)
         # # mod = external_lowering_mlir_opt!(op, `--one-shot-bufferize`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-linalg-to-affine-loops -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir --convert-linalg-to-affine-loops -o /tmp/temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
 
-        # # mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-convert-memref-to-llvm -o temp_out.mlir`, ctx)
+        # # mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-convert-memref-to-llvm -o /tmp/temp_out.mlir`, ctx)
         # # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --lower-affine -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir --lower-affine -o /tmp/temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --expand-strided-metadata -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir --expand-strided-metadata -o /tmp/temp_out.mlir`, ctx)
 
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-scf-to-cf -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir --convert-scf-to-cf -o /tmp/temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
 
-        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-to-llvm -o temp_out.mlir`, ctx)
+        external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-to-llvm -o /tmp/temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(fo.mod))
         
 
-        # mod = external_lowering_mlir_opt!(op, `mlir-opt temp.mlir --convert-to-llvm -o temp_out.mlir`, ctx)
+        # mod = external_lowering_mlir_opt!(op, `mlir-opt /tmp/temp.mlir --convert-to-llvm -o temp_out.mlir`, ctx)
         # op = IR.Operation(MLIR.API.mlirModuleGetOperation(mod))
 
         println("received: ", op)
