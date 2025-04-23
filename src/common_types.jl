@@ -40,6 +40,8 @@ function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
 end
 
+get_op_with_ownership(module_::IR.Module) = IR.Operation(MLIR.API.mlirModuleGetOperation(module_), true)
+
 
 ## StaticArrays 
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())

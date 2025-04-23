@@ -12,6 +12,8 @@ function run!(pass::IR.AbstractPass, mod::IR.Module, ctx)
     pm = IR.PassManager()
     mlir_pass = IR.create_external_pass!(pm, pass, nameof_pass, nameof_pass, "", opname)
 
+    println("Created external pass")
+
     if isempty(opname)
         IR.add_owned_pass!(pm, mlir_pass)
     else
@@ -81,6 +83,7 @@ function IR.pass_run(::LowerJuliaMat, func_op)
     for region in IR.RegionIterator(func_op)
         for block in IR.BlockIterator(region)
             for op in IR.OperationIterator(block)
+                println("processing: $(name(op))")
                 if name(op) == "julia.mat_inst"
                     operands = collect_operands(op)
                     types = IR.julia_type.((IR.type.(operands)))
@@ -376,12 +379,16 @@ function IR.pass_run(::LowerJuliaArith, func_op)
     for region in IR.RegionIterator(func_op)
         for block in IR.BlockIterator(region)
             for op in IR.OperationIterator(block)
+                println("Processing op: $(name(op))")
                 if name(op) == "julia.add"
                     unroll_operation!(op, block, arith.addi, arith.addf)
                     unroll_operation_mat!(op, block, tosa.add)
                 elseif name(op) == "julia.sub"
+                    println("now processing the sub op")
                     unroll_operation!(op, block, arith.subi, arith.subf)
+                    println("unrolled simple arith")
                     unroll_operation_mat!(op, block, tosa.sub)
+                    println("unrolled simple tensor arith")
                 elseif name(op) == "julia.mul"
                     unroll_operation!(op, block, arith.muli, arith.mulf)
                     unroll_operation_mat!(op, block, tosa.matmul)

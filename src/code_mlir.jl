@@ -30,14 +30,18 @@ end
 
 "Translate typed IR into MLIR"
 function code_mlir(f, types; ctx = IR.context())
+    # if !IR._has_context()
+    #     ctx = IR.Context()
+    # end
+
     # load dialects
     for dialect in (:func, :cf, :memref, :linalg, :tensor)
-        IR.register_dialect!(IR.DialectHandle(dialect))
+        IR.register_dialect!(IR.DialectHandle(dialect); context=ctx)
     end
 
-    IR.load_all_available_dialects()
+    IR.load_all_available_dialects(; context=ctx)
 
-    IR.allow_unregistered_dialects!(true)
+    IR.allow_unregistered_dialects!(true; context=ctx)
 
     ### Initialise abstract interpreter ###
     interp = MLIRInterpreter()
@@ -115,18 +119,17 @@ function code_mlir(f, types; ctx = IR.context())
     IR.verifyall(op)
     println("verified")
 
-    # mod = 
-    mod = IR.Module(Location())
-    body = IR.body(mod)
-    push!(body, op)
+    GC.@preserve op begin
+        mod = IR.Module(Location())
+        body = IR.body(mod)
+        push!(body, op)
 
-    println("created_module")
-
-    ### Lower from julia dialect ###
-    run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
-    run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
-    println("run passes")
+        ### Lower from julia dialect ###
+        run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
+        run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
+        println("run passes on mod of type: $(typeof(mod))")
+    end
 
     ### return result ###
-    return op
+    return mod
 end
