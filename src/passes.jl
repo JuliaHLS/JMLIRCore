@@ -235,7 +235,24 @@ function IR.pass_run(::LowerJuliaMat, func_op)
 end
 
 
+@noinline function array_unimplemented(op)
+    operands = collect_operands(op)
+    types = IR.julia_type.((IR.type.(operands)))
 
+    ret = IR.type.(collect_results(op))[1]
+
+    prev_op = op
+    prev_ref = operands[1]
+    prev_val = operands[1]
+
+    replaced = false
+
+    for new_ref in operands[2:end]
+        if types[1] <: AbstractArray && types[2] <: AbstractArray
+            error("Unimplemented in MLIR pass: $op")
+        end
+    end
+end
 
 struct LowerJuliaArith <: IR.AbstractPass end
 
@@ -273,9 +290,6 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                 prev_val = collect_results(prev_op)[1]
 
                 replaced = true
-
-            # else
-            #     error("Error in LowerJuliaArith pass, unrecognized return signature $types")
             end
 
         end
@@ -284,6 +298,49 @@ function IR.pass_run(::LowerJuliaArith, func_op)
             push!(replace_ops, [op, prev_op])
         end
     end
+
+    function unroll_operation!(op::IR.Operation, block, fn_sint::Function, fn_uint::Function, fn_float::Function)
+        operands = collect_operands(op)
+        types = IR.julia_type.(IR.type.(operands))
+
+        prev_op = op
+        prev_ref = operands[1]
+        prev_val = operands[1]
+
+        replaced = false
+
+        for new_ref in operands[2:end]
+            if types[1] <: Signed && types[2] <: Signed
+                new_op = fn_sint(prev_val, new_ref)
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
+                replaced = true
+            elseif types[1] <: Unsigned && types[2] <: Unsigned 
+                new_op = fn_uint(prev_val, new_ref)
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
+                replaced = true
+            elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
+                new_op = fn_float((prev_val), new_ref)
+                IR.insert_after!(block, prev_op, new_op)
+                prev_op = new_op
+                prev_ref = new_ref
+                prev_val = collect_results(prev_op)[1]
+
+                replaced = true
+            end
+
+        end
+
+        if replaced
+            push!(replace_ops, [op, prev_op])
+        end
+    end
+
 
 
     # TODO: turn into proper dynamic dispatch
@@ -395,6 +452,10 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                 elseif name(op) == "julia.div"
                     # TODO: check there is no div equivalnet
                     unroll_operation!(op, block, arith.divf, arith.divf)
+                elseif name(op) == "julia.rem"
+                    unroll_operation!(op, block, arith.remsi, arith.remui, arith.remf)
+                    array_unimplemented(op)
+                    
                 elseif name(op) == "julia.cmp"
                     lower_cmp!(op, block)
                 end

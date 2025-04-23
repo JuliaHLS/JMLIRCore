@@ -112,12 +112,10 @@ function code_mlir(f, types; ctx = IR.context())
         owned_regions=Region[region],
         result_inference=false,
     )
-    println("created_op")
-
 
     ### Verify validity of the MLIR generated ###
     IR.verifyall(op)
-    println("verified")
+    println("Created op: $op")
 
     GC.@preserve op begin
         mod = IR.Module(Location())

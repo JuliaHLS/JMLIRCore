@@ -45,9 +45,7 @@ function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
     end
 
     # lower
-    println("Running CMD: ", passes)
     run(passes)
-
 
     # read from file back into the pipeline
     ir = read("/tmp/temp_out.mlir", String)

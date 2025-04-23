@@ -42,7 +42,6 @@ end
 
 get_op_with_ownership(module_::IR.Module) = IR.Operation(MLIR.API.mlirModuleGetOperation(module_), true)
 
-
 ## StaticArrays 
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)

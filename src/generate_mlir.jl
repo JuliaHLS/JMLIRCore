@@ -32,7 +32,7 @@ end
 translate_intrinsic(::typeof(Base.add_int)) = return :+
 translate_intrinsic(::typeof(Base.sub_int)) = return :-
 translate_intrinsic(::typeof(Base.mul_int)) = return :*
-translate_intrinsic(fn::Any) = return first(methods(fn)).name
+translate_intrinsic(fn::Any) = first(methods(fn)).name == :IntrinsicFunction ? fn : first(methods(fn)).name
 
 function generate_mlir(md::MethodDetails)
     return generate_mlir(Val(md.sym), (md.rettype))
@@ -106,6 +106,10 @@ function generate_mlir(::Val{:/}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.div)
 end
 
+function generate_mlir(::Val{:rem}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(julia.rem)
+end
+
 
 ### PREDICATES ###
 function cmpi_pred(predicate)
@@ -154,10 +158,6 @@ end
 
 function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.shrui)
-end
-
-function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer})
-    return single_op_wrapper_out_is_result(arith.remsi)
 end
 
 function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat})
