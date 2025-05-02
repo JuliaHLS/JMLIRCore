@@ -266,6 +266,8 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         operands = collect_operands(op)
         types = IR.julia_type.(IR.type.(operands))
 
+        ret = IR.type.(collect_results(op))[1]
+
         prev_op = op
         prev_ref = operands[1]
         prev_val = operands[1]
@@ -274,7 +276,7 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         for new_ref in operands[2:end]
             if types[1] <: Integer && types[2] <: Integer
-                new_op = fn_int(prev_val, new_ref)
+                new_op = fn_int(prev_val, new_ref; result=ret)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
@@ -283,7 +285,7 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                 replaced = true
 
             elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                new_op = fn_float((prev_val), new_ref)
+                new_op = fn_float((prev_val), new_ref; result=ret)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
@@ -303,6 +305,8 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         operands = collect_operands(op)
         types = IR.julia_type.(IR.type.(operands))
 
+        ret = IR.type.(collect_results(op))[1]
+
         prev_op = op
         prev_ref = operands[1]
         prev_val = operands[1]
@@ -311,21 +315,21 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         for new_ref in operands[2:end]
             if types[1] <: Signed && types[2] <: Signed
-                new_op = fn_sint(prev_val, new_ref)
+                new_op = fn_sint(prev_val, new_ref; result=ret)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
                 prev_val = collect_results(prev_op)[1]
                 replaced = true
             elseif types[1] <: Unsigned && types[2] <: Unsigned 
-                new_op = fn_uint(prev_val, new_ref)
+                new_op = fn_uint(prev_val, new_ref; result = ret)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
                 prev_val = collect_results(prev_op)[1]
                 replaced = true
             elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                new_op = fn_float((prev_val), new_ref)
+                new_op = fn_float((prev_val), new_ref; result = ret)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
                 prev_ref = new_ref
@@ -451,7 +455,7 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                     unroll_operation_mat!(op, block, tosa.matmul)
                 elseif name(op) == "julia.div"
                     # TODO: check there is no div equivalnet
-                    unroll_operation!(op, block, arith.divf, arith.divf)
+                    unroll_operation!(op, block, arith.divsi, arith.divui, arith.divf)
                 elseif name(op) == "julia.rem"
                     unroll_operation!(op, block, arith.remsi, arith.remui, arith.remf)
                     array_unimplemented(op)
