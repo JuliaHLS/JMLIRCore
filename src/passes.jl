@@ -258,6 +258,25 @@ struct LowerJuliaArith <: IR.AbstractPass end
 
 IR.opname(::LowerJuliaArith) = "func.func"
 
+
+# used for unrolling arbitrarily large intrinsics
+struct reference_information
+    operand_types::Vector{DataType}
+    prev_op::IR.Operation
+    prev_val::IR.Value
+    block::IR.Block
+    ret
+
+    function reference_information(operand_types::Vector{DataType}, prev_op::IR.Operation, prev_val::IR.Value, block::IR.Block, ret)
+        new(operand_types, prev_op, prev_val, block, ret)
+    end
+
+    function reference_information(_prev_op::IR.Operation, _prev_val::IR.Value)
+        new(operand_types[2:end], _prev_op, _prev_val, block, ret)
+    end
+end
+
+
 function IR.pass_run(::LowerJuliaArith, func_op)
     println("Running LowerJuliaArith")
     replace_ops = []
@@ -301,47 +320,60 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         end
     end
 
+    function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{Any}, new_ref, replaced::Bool)::Bool
+        if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
+            new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
+            IR.insert_after!(prev.block, prev.prev_op, new_op)
+            replaced = true
+            prev = reference_information(new_op, collect_results(new_op)[1])
+
+            true
+        end
+        false
+    end
+
+    function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{AbstractArray}, new_ref, replaced::Bool)::Bool
+        if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
+            if mlir_fn === tosa.matmul
+                new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret)
+            else
+                new_op = mlir_fn(prev.prev_val, new_ref, output=prev.ret)
+            end
+
+            new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
+            IR.insert_after!(prev.block, prev.prev_op, new_op)
+            replaced = true
+            prev = reference_information(new_op, collect_results(new_op)[1])
+
+            true
+        end
+        false
+    end
+
+
+
     function unroll_operation!(op::IR.Operation, block, fn_sint::Function, fn_uint::Function, fn_float::Function)
         operands = collect_operands(op)
         types = IR.julia_type.(IR.type.(operands))
 
         ret = IR.type.(collect_results(op))[1]
 
-        prev_op = op
-        prev_ref = operands[1]
-        prev_val = operands[1]
+        prev_info = reference_information(types, op, operands[1], block, ret)
 
         replaced = false
 
         for new_ref in operands[2:end]
-            if types[1] <: Signed && types[2] <: Signed
-                new_op = fn_sint(prev_val, new_ref; result=ret)
-                IR.insert_after!(block, prev_op, new_op)
-                prev_op = new_op
-                prev_ref = new_ref
-                prev_val = collect_results(prev_op)[1]
-                replaced = true
-            elseif types[1] <: Unsigned && types[2] <: Unsigned 
-                new_op = fn_uint(prev_val, new_ref; result = ret)
-                IR.insert_after!(block, prev_op, new_op)
-                prev_op = new_op
-                prev_ref = new_ref
-                prev_val = collect_results(prev_op)[1]
-                replaced = true
-            elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
-                new_op = fn_float((prev_val), new_ref; result = ret)
-                IR.insert_after!(block, prev_op, new_op)
-                prev_op = new_op
-                prev_ref = new_ref
-                prev_val = collect_results(prev_op)[1]
-
-                replaced = true
+            if convert_julia_op_to_mlir!(prev_info, fn_sint, Signed, new_ref, replaced)
+                continue
+            elseif convert_julia_op_to_mlir!(prev_info, fn_uint, Unsigned, new_ref, replaced)
+                continue
+            elseif convert_julia_op_to_mlir!(prev_info, fn_float, AbstractFloat, new_ref, replaced)
+                continue
             end
-
         end
 
         if replaced
-            push!(replace_ops, [op, prev_op])
+            push!(replace_ops, [op, prev_info.prev_op])
         end
     end
 
@@ -354,33 +386,16 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
         ret = IR.type.(collect_results(op))[1]
 
-        prev_op = op
-        prev_ref = operands[1]
-        prev_val = operands[1]
+        prev_info = reference_information(types, op, operands[1], block, ret)
 
         replaced = false
 
         for new_ref in operands[2:end]
-            if types[1] <: AbstractArray && types[2] <: AbstractArray
-                if fn === tosa.matmul
-                    new_op = fn(prev_val, new_ref, c=ret)
-                else
-                    new_op = fn(prev_val, new_ref, output=ret)
-                end
-                 
-                IR.insert_after!(block, prev_op, new_op)
-                prev_op = new_op
-                prev_ref = new_ref
-                prev_val = collect_results(prev_op)[1]
-
-                replaced = true
-            # else
-            #     error("Error in LowerJuliaArith pass, unrecognized return signature $types")
-            end
+            convert_julia_op_to_mlir!(prev_info, fn, AbstractArray, new_ref, replaced)
         end
 
         if replaced
-            push!(replace_ops, [op, prev_op])
+            push!(replace_ops, [op, prev_info.prev_op])
         end
     end
 
