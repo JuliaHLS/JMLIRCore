@@ -12,17 +12,20 @@ function run!(pass::IR.AbstractPass, mod::IR.Module, ctx)
     pm = IR.PassManager()
     mlir_pass = IR.create_external_pass!(pm, pass, nameof_pass, nameof_pass, "", opname)
 
-    println("Created external pass")
+    GC.@preserve mlir_pass mod pass begin
+        println("Created external pass")
 
-    if isempty(opname)
-        IR.add_owned_pass!(pm, mlir_pass)
-    else
-        @assert is_registered_operation(opname, ctx) "$opname is not registered"
-        opm = IR.OpPassManager(pm, opname)
-        IR.add_owned_pass!(opm, mlir_pass)
+        if isempty(opname)
+            IR.add_owned_pass!(pm, mlir_pass)
+        else
+            @assert is_registered_operation(opname, ctx) "$opname is not registered"
+            opm = IR.OpPassManager(pm, opname)
+            IR.add_owned_pass!(opm, mlir_pass)
+        end
+
+
+        status = API.mlirPassManagerRunOnOp(pm, IR.Operation(mod))
     end
-
-    status = API.mlirPassManagerRunOnOp(pm, IR.Operation(mod))
 end
 
 module JuliaPasses
@@ -260,7 +263,8 @@ IR.opname(::LowerJuliaArith) = "func.func"
 
 
 # used for unrolling arbitrarily large intrinsics
-struct reference_information
+# Note: mutable to allow pass by referene for mutable types
+mutable struct reference_information
     operand_types::Vector{DataType}
     prev_op::IR.Operation
     prev_val::IR.Value
@@ -270,18 +274,70 @@ struct reference_information
     function reference_information(operand_types::Vector{DataType}, prev_op::IR.Operation, prev_val::IR.Value, block::IR.Block, ret)
         new(operand_types, prev_op, prev_val, block, ret)
     end
+end
 
-    function reference_information(_prev_op::IR.Operation, _prev_val::IR.Value)
-        new(operand_types[2:end], _prev_op, _prev_val, block, ret)
+
+function underlying_type(type::IR.Type)
+    if IR.istensor(type) == AbstractArray 
+        if IR.julia_type(eltype(type)) <: Integer
+            return Integer
+        elseif IR.julia_type(eltype(type)) <: AbstractFloat
+            return AbstractFloat
+        else
+            error("Unrecognized tensor type: $(IR.julia_type(eltype(type)))")
+        end
+    elseif IR.julia_type(type) <: Integer || IR.julia_type(type) <: AbstractFloat
+        return IR.julia_type(type)
+    else 
+        error("Received unrecognized type when Lowering julia to MLIR, Type: $(type)")
+    end
+end
+
+# TODO: only considering the types from one side!
+function translate_predicate(pred, type)::Int64
+    # the offset between signed and unsigned types == 4
+    if type <: Unsigned && Int(pred) >= 2
+        return Int(pred) + 4
+    else
+        return Int(pred)
     end
 end
 
 
-function IR.pass_run(::LowerJuliaArith, func_op)
-    println("Running LowerJuliaArith")
-    replace_ops = []
 
-    function unroll_operation!(op::IR.Operation, block, fn_int::Function, fn_float::Function)
+
+function update_reference_information(ref_info::reference_information, _prev_op::IR.Operation, _prev_val::IR.Value)
+    ref_info.operand_types = ref_info.operand_types[2:end]
+    ref_info.prev_op = _prev_op
+    ref_info.prev_val = _prev_val
+end
+
+# TODO: turn into proper dynamic dispatch
+function lower_cmp!(op::IR.Operation, block, replace_ops)
+    operands = collect_operands(op)
+    raw_types = IR.type.(operands)
+    types = IR.julia_type.(raw_types)
+
+    ret = IR.type.(collect_results(op))[1]
+
+    attributes = collect_attributes(op)
+    pred = IR.attr(op, "predicate")
+
+    # TODO: add asserts
+    if underlying_type(raw_types[1]) <: Integer && underlying_type(raw_types[2]) <: Integer 
+        new_op = arith.cmpi(operands...; result=IR.Type(Bool), predicate=translate_predicate(pred, types[1]))
+    elseif underlying_type(raw_types[1]) <: AbstractFloat && underlying_type(raw_types[2]) <: AbstractFloat
+        new_op = arith.cmpf(operands...; result=IR.Type(Bool), predicate=translate_predicate(pred, types[1]))
+    else
+        error("Error: unable to translate julia.cmp with types: $types")
+    end
+
+    IR.insert_after!(block, op, new_op)
+    push!(replace_ops, [op, new_op])
+end
+
+
+function unroll_operation!(op::IR.Operation, block, fn_int::Function, fn_float::Function, replace_ops)
         operands = collect_operands(op)
         types = IR.julia_type.(IR.type.(operands))
 
@@ -320,169 +376,155 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         end
     end
 
-    function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{Any}, new_ref, replaced::Bool)::Bool
-        if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
-            new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
-            IR.insert_after!(prev.block, prev.prev_op, new_op)
-            replaced = true
-            prev = reference_information(new_op, collect_results(new_op)[1])
 
-            true
+function unroll_operation!(op::IR.Operation, block, fn_sint::Function, fn_uint::Function, fn_float::Function, replace_ops)
+    operands = collect_operands(op)
+    types = IR.julia_type.(IR.type.(operands))
+
+    ret = IR.type.(collect_results(op))[1]
+
+    prev_info = reference_information(types, op, operands[1], block, ret)
+
+    replaced = false
+
+    for new_ref in operands[2:end]
+        if convert_julia_op_to_mlir!(prev_info, fn_sint, Signed, new_ref)
+            replaced = true 
+        elseif convert_julia_op_to_mlir!(prev_info, fn_uint, Unsigned, new_ref)
+            replaced = true 
+        elseif convert_julia_op_to_mlir!(prev_info, fn_float, AbstractFloat, new_ref)
+            replaced = true 
         end
+    end
+
+    if replaced
+        push!(replace_ops, [op, prev_info.prev_op])
+    end
+end
+
+
+
+function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type, new_ref)::Bool
+    if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
+        new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
+        IR.insert_after!(prev.block, prev.prev_op, new_op)
+        update_reference_information(prev, new_op, collect_results(new_op)[1])
+        println("updated ref now: $(prev.prev_op)")
+
+        true
+    else
         false
     end
+end
 
-    function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{AbstractArray}, new_ref, replaced::Bool)::Bool
-        if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
-            if mlir_fn === tosa.matmul
-                new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret)
-            else
-                new_op = mlir_fn(prev.prev_val, new_ref, output=prev.ret)
-            end
-
-            new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
-            IR.insert_after!(prev.block, prev.prev_op, new_op)
-            replaced = true
-            prev = reference_information(new_op, collect_results(new_op)[1])
-
-            true
+function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{AbstractArray}, new_ref)::Bool
+    if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
+        if mlir_fn === tosa.matmul
+            new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret)
+        else
+            new_op = mlir_fn(prev.prev_val, new_ref, output=prev.ret)
         end
+
+        new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
+        IR.insert_after!(prev.block, prev.prev_op, new_op)
+        update_reference_information(prev, new_op, collect_results(new_op)[1])
+
+        true
+    else
         false
     end
+end
 
 
 
-    function unroll_operation!(op::IR.Operation, block, fn_sint::Function, fn_uint::Function, fn_float::Function)
-        operands = collect_operands(op)
-        types = IR.julia_type.(IR.type.(operands))
+# TODO: turn into proper dynamic dispatch
+function unroll_operation_mat!(op::IR.Operation, block, fn, replace_ops)
+    operands = collect_operands(op)
+    types = IR.julia_type.((IR.type.(operands)))
 
-        ret = IR.type.(collect_results(op))[1]
+    ret = IR.type.(collect_results(op))[1]
 
-        prev_info = reference_information(types, op, operands[1], block, ret)
+    prev_info = reference_information(types, op, operands[1], block, ret)
 
-        replaced = false
+    replaced = false
 
-        for new_ref in operands[2:end]
-            if convert_julia_op_to_mlir!(prev_info, fn_sint, Signed, new_ref, replaced)
-                continue
-            elseif convert_julia_op_to_mlir!(prev_info, fn_uint, Unsigned, new_ref, replaced)
-                continue
-            elseif convert_julia_op_to_mlir!(prev_info, fn_float, AbstractFloat, new_ref, replaced)
-                continue
-            end
-        end
-
-        if replaced
-            push!(replace_ops, [op, prev_info.prev_op])
+    for new_ref in operands[2:end]
+        if convert_julia_op_to_mlir!(prev_info, fn, AbstractArray, new_ref)
+            replaced = true
         end
     end
 
-
-
-    # TODO: turn into proper dynamic dispatch
-    function unroll_operation_mat!(op::IR.Operation, block, fn)
-        operands = collect_operands(op)
-        types = IR.julia_type.((IR.type.(operands)))
-
-        ret = IR.type.(collect_results(op))[1]
-
-        prev_info = reference_information(types, op, operands[1], block, ret)
-
-        replaced = false
-
-        for new_ref in operands[2:end]
-            convert_julia_op_to_mlir!(prev_info, fn, AbstractArray, new_ref, replaced)
-        end
-
-        if replaced
-            push!(replace_ops, [op, prev_info.prev_op])
-        end
+    if replaced
+        push!(replace_ops, [op, prev_info.prev_op])
     end
-
-    function underlying_type(type::IR.Type)
-        if IR.istensor(type) == AbstractArray 
-            if IR.julia_type(eltype(type)) <: Integer
-                return Integer
-            elseif IR.julia_type(eltype(type)) <: AbstractFloat
-                return AbstractFloat
-            else
-                error("Unrecognized tensor type: $(IR.julia_type(eltype(type)))")
-            end
-        elseif IR.julia_type(type) <: Integer || IR.julia_type(type) <: AbstractFloat
-            return IR.julia_type(type)
-        else 
-            error("Received unrecognized type when Lowering julia to MLIR, Type: $(type)")
-        end
-    end
-
-    # TODO: only considering the types from one side!
-    function translate_predicate(pred, type)::Int64
-        # the offset between signed and unsigned types == 4
-        if type <: Unsigned && Int(pred) >= 2
-            return Int(pred) + 4
-        else
-            return Int(pred)
-        end
-    end
+end
 
 
-    # TODO: turn into proper dynamic dispatch
-    function lower_cmp!(op::IR.Operation, block)
-        operands = collect_operands(op)
-        raw_types = IR.type.(operands)
-        types = IR.julia_type.(raw_types)
 
-        ret = IR.type.(collect_results(op))[1]
 
-        attributes = collect_attributes(op)
-        pred = IR.attr(op, "predicate")
+function lower_op_to_mlir(op_name::Val{Any}, block::IR.Block, op::IR.Operation)
+    error("Lower operation not found for $op_name")
+end
 
-        # TODO: add asserts
-        if underlying_type(raw_types[1]) <: Integer && underlying_type(raw_types[2]) <: Integer 
-            new_op = arith.cmpi(operands...; result=IR.Type(Bool), predicate=translate_predicate(pred, types[1]))
-        elseif underlying_type(raw_types[1]) <: AbstractFloat && underlying_type(raw_types[2]) <: AbstractFloat
-            new_op = arith.cmpf(operands...; result=IR.Type(Bool), predicate=translate_predicate(pred, types[1]))
-        else
-            error("Error: unable to translate julia.cmp with types: $types")
-        end
 
-        IR.insert_after!(block, op, new_op)
-        push!(replace_ops, [op, new_op])
-    end
 
+
+
+function lower_op_to_mlir(op_name::Val{:(julia_add)}, block::IR.Block, op::IR.Operation, replace_ops)
+    unroll_operation!(op, block, arith.addi, arith.addf, replace_ops)
+    unroll_operation_mat!(op, block, tosa.add, replace_ops)
+end
+
+
+function lower_op_to_mlir(op_name::Val{:(julia_sub)}, block::IR.Block, op::IR.Operation, replace_ops)
+    unroll_operation!(op, block, arith.subi, arith.subf, replace_ops)
+    unroll_operation_mat!(op, block, tosa.sub, replace_ops)
+end
+
+
+function lower_op_to_mlir(op_name::Val{:(julia_mul)}, block::IR.Block, op::IR.Operation, replace_ops)
+    unroll_operation!(op, block, arith.muli, arith.mulf, replace_ops)
+    unroll_operation_mat!(op, block, tosa.matmul, replace_ops)
+end
+
+function lower_op_to_mlir(op_name::Val{:(julia_div)}, block::IR.Block, op::IR.Operation, replace_ops)
+    unroll_operation!(op, block, arith.divsi, arith.divui, arith.divf, replace_ops)
+end
+
+function lower_op_to_mlir(op_name::Val{:(julia_rem)}, block::IR.Block, op::IR.Operation, replace_ops)
+    unroll_operation!(op, block, arith.remsi, arith.remui, arith.remf, replace_ops)
+    array_unimplemented(op)
+end
+
+function lower_op_to_mlir(op_name::Val{:(julia_cmp)}, block::IR.Block, op::IR.Operation, replace_ops)
+    lower_cmp!(op, block, replace_ops)
+end
+
+
+
+function IR.pass_run(::LowerJuliaArith, func_op)
+    println("Running LowerJuliaArith")
+    replace_ops = []
+
+       
 
 
     for region in IR.RegionIterator(func_op)
         for block in IR.BlockIterator(region)
             for op in IR.OperationIterator(block)
                 println("Processing op: $(name(op))")
-                if name(op) == "julia.add"
-                    unroll_operation!(op, block, arith.addi, arith.addf)
-                    unroll_operation_mat!(op, block, tosa.add)
-                elseif name(op) == "julia.sub"
-                    println("now processing the sub op")
-                    unroll_operation!(op, block, arith.subi, arith.subf)
-                    println("unrolled simple arith")
-                    unroll_operation_mat!(op, block, tosa.sub)
-                    println("unrolled simple tensor arith")
-                elseif name(op) == "julia.mul"
-                    unroll_operation!(op, block, arith.muli, arith.mulf)
-                    unroll_operation_mat!(op, block, tosa.matmul)
-                elseif name(op) == "julia.div"
-                    # TODO: check there is no div equivalnet
-                    unroll_operation!(op, block, arith.divsi, arith.divui, arith.divf)
-                elseif name(op) == "julia.rem"
-                    unroll_operation!(op, block, arith.remsi, arith.remui, arith.remf)
-                    array_unimplemented(op)
-                    
-                elseif name(op) == "julia.cmp"
-                    lower_cmp!(op, block)
+                op_name = replace(name(op), "." => "_")
+
+                if length(op_name) >= 5 && op_name[1:5] == "julia"
+                    op_sym = Symbol(op_name)
+                    lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
                 end
             end
         end
     end
 
     for (original, replacement) in replace_ops
+        println("Replacing $original with $replacement")
         rewriter = API.mlirIRRewriterCreateFromOp(original)
 
         GC.@preserve rewriter begin

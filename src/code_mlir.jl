@@ -119,7 +119,7 @@ function code_mlir(f, types; ctx = IR.context())
     IR.verifyall(op)
     println("Created op: $op")
 
-    GC.@preserve op begin
+    GC.@preserve op ctx begin
         mod = IR.Module(Location())
         body = IR.body(mod)
         push!(body, op)
