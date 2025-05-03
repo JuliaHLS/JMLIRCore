@@ -3,7 +3,8 @@ using MLIR
 using MLIR.IR
 using LinearAlgebra
 
-include("dialect.jl")
+include("julia/dialect.jl")
+using .julia
 
 """ Method Wrapper """
 struct MethodDetails

@@ -3,7 +3,7 @@ include("intrinsics.jl")
 include("blocks.jl")
 include("expressions.jl")
 include("MLIRInterpreter.jl")
-include("passes.jl")
+include("julia/passes.jl")
 
 "Macro @code_mlir f(args...)"
 macro code_mlir(call)
