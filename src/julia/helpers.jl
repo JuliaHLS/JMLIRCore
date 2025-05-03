@@ -275,10 +275,11 @@ module _JuliaPassHelpers
             if mlir_fn === tosa.matmul
                 new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret)
             else
-                new_op = mlir_fn(prev.prev_val, new_ref, output=prev.ret)
+                println("Replacing with $mlir_fn, with output $(prev.ret)")
+                new_op = mlir_fn(prev.prev_val, new_ref; output=prev.ret)
             end
 
-            new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
+            # new_op = mlir_fn(prev.prev_val, new_ref; result=prev.ret)
             IR.insert_after!(prev.block, prev.prev_op, new_op)
             update_reference_information(prev, new_op, collect_results(new_op)[1])
 
