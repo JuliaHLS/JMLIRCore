@@ -79,8 +79,6 @@ function mat_inst(elements::Array{Value}; result::IR.Type, location=Location())
     _successors = Block[]
     _attributes = IR.NamedAttribute[]
 
-    println("Got location: $location")
-
     return IR.create_operation(
         "julia.mat_inst",
         location;
@@ -118,7 +116,6 @@ function mat_setindex(
     result=nothing::Union{Nothing,IR.Type},
     location=Location(),
 )
-    println("Got location: $location")
     # unpack the result
     dest::Value = args[1]
     scalar::Value = args[2]

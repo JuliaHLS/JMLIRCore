@@ -100,8 +100,6 @@ function code_mlir(f, types; ctx = IR.context())
     f_name = nameof(f)
     ftype = IR.FunctionType(input_types, result_types)
 
-    println("here")
-
     # create mlir operation (function call)
     op = IR.create_operation(
         "func.func",
