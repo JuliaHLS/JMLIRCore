@@ -191,7 +191,8 @@ function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
 end
 
 function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
-    return single_op_wrapper_with_result(julia.mat_getindex)
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    push!(block, julia.mat_getindex(args; result=result, location))
 end
 
 

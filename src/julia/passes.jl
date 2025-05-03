@@ -72,7 +72,7 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                 op_name = replace(name(op), "." => "_")
 
                 # if op is in the julia dialect
-                if length(op_name) >= 5 && op_name[1:5] == "julia"
+                if length(op_name) >= 9 && op_name[1:5] == "julia.mat"
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
                 end
@@ -100,6 +100,10 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
                 # if op is in the julia dialect
                 if length(op_name) >= 5 && op_name[1:5] == "julia"
+                    if length(op_name) >= 9 && op_name[6:9] == "mat"
+                        continue
+                    end
+
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
                 end

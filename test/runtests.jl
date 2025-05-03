@@ -13,6 +13,18 @@ function create_mat()
     return @MMatrix [1 2 3 4 5; 6 7 8 9 0]
 end
 
+function modify_mat(idx1, idx2, val)
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    a[idx1, idx2] = val
+    return a
+end
+
+function set_and_get_mat(idx1, idx2, ret_idx1, ret_idx2, val)
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    a[idx1, idx2] = val
+    return a[ret_idx1, ret_idx2]
+end
+
 ## produces two basic blocks that merge at the same node
 function multi_route_node(A, B)
 	result = 0
@@ -125,4 +137,6 @@ end
 
    ## MATRIX OPERATION TEST ##
    @test (@eval_mlir create_mat()) == (@eval create_mat())
+   @test (@eval_mlir modify_mat(2, 3, 5)) == (@eval modify_mat(2, 3, 5))
+   @test (@eval_mlir set_and_get_mat(2, 3, 2, 2, 5)) == (@eval set_and_get_mat(2, 3, 2, 2, 5))
 end

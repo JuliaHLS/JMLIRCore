@@ -79,6 +79,8 @@ function mat_inst(elements::Array{Value}; result::IR.Type, location=Location())
     _successors = Block[]
     _attributes = IR.NamedAttribute[]
 
+    println("Got location: $location")
+
     return IR.create_operation(
         "julia.mat_inst",
         location;
@@ -116,6 +118,7 @@ function mat_setindex(
     result=nothing::Union{Nothing,IR.Type},
     location=Location(),
 )
+    println("Got location: $location")
     # unpack the result
     dest::Value = args[1]
     scalar::Value = args[2]
@@ -147,15 +150,14 @@ function mat_setindex(
 end
 
 function mat_getindex(
-    source::Value,
-    indices::Value;
+    args::Vector{Value};
     result::IR.Type,
     # gather_dims, TODO: add support for dims
     unique=nothing,
     location=Location(),
 )
     _results = IR.Type[result,]
-    _operands = Value[source, indices]
+    _operands = Value[args...]
     _owned_regions = Region[]
     _successors = Block[]
     # _attributes = NamedAttribute[namedattribute("gather_dims", gather_dims),]

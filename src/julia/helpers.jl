@@ -376,13 +376,18 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
     sub_const = arith.constant(;value=1,result=IR.Type(Int))
     IR.insert_before!(block, op, sub_const)
 
-    sub_op = arith.subi(operands[2], IR.result(sub_const))
-    IR.insert_before!(block, op, sub_op)
+    new_idx_ops = []
+    for idx in operands[2:end]
+        sub_op = arith.subi(idx, IR.result(sub_const))
+        IR.insert_before!(block, op, sub_op)
 
-    index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
-    IR.insert_before!(block, op, index_op)
+        index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
+        IR.insert_before!(block, op, index_op)
 
-    operands[2] = IR.result(index_op)
+        push!(new_idx_ops, index_op)
+    end
+
+    operands[2:end] = IR.result.(new_idx_ops)
 
     # create operation
     gather_dims = IR.DenseArrayAttribute([0])
@@ -392,6 +397,7 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
     # ret = IR.TensorType([1], ret)
 
     new_indices = operands[2:end]
+    println("Got new indices: $new_indices")
 
     # fix index annotations
     if length(new_indices) == 1
@@ -408,17 +414,22 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
         end
     end
 
+    println("HEREHRERE with operands: $new_indices and indices: $new_indices")
+
 
     # create transpose op
     new_op = tensor.extract(operands[1], new_indices; result=ret)
+    println("Created extraction operation")
 
     # insert into the program
     IR.insert_after!(block, op, new_op)
+    println("inserted")
     push!(replace_ops, [op, new_op])
+    println("added to replace")
 end
 
 
-function lower_op_to_mlir(op_name::Val{:(julia_mat_adjoint)}, block::IR.Block, op::IR.Operation, replace_ops)
+function lower_op_to_mlir(op_name::Val{:(julia_mat_setindex)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)
     types = IR.julia_type.((IR.type.(operands)))
     ret = IR.type.(collect_results(op))[1]
