@@ -74,6 +74,9 @@ module _JuliaPassHelpers
         end
     end
 
+    # function get_mat_dims(op)
+        
+    # end
 
     function collect_operands(op::IR.Operation)::Vector{IR.Value}
         operands::Vector{IR.Value} = []
@@ -329,8 +332,20 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::
 
     ret = IR.type.(collect_results(op))[1]
 
+    # reorder the input matrix based on the input dimensions
+    println("ret is: $ret with dims $(size(ret))")
+    new_operand_order::Vector{IR.Value} = []
+    step_size = first(size(ret))
+    for step in 1:step_size
+        for outer_dim in 1:last(size(ret))
+            push!(new_operand_order, operands[(step_size * (outer_dim - 1)) + step])
+        end
+    end
+
+    println("Created new operands order $new_operand_order")
+
     if IR.istensor(ret)
-        new_op = tensor.from_elements(operands,result=ret)
+        new_op = tensor.from_elements(new_operand_order, result=ret)
         IR.insert_after!(block, op, new_op)
     else
         error("Error: incorrect types used for julia.mat_inst")

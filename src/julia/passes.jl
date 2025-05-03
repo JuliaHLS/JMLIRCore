@@ -46,7 +46,16 @@ parent_operation(operation) = Operation(API.mlirOperationGetParentOperation(oper
 dialect(operation) = first(split(name(operation), '.')) |> Symbol
 
 
+function rewrite_references(replace_ops)
+  for (original, replacement) in replace_ops
+        rewriter = API.mlirIRRewriterCreateFromOp(original)
 
+        GC.@preserve rewriter begin
+            API.mlirRewriterBaseReplaceOpWithOperation(rewriter, original, replacement)
+        end
+        API.mlirIRRewriterDestroy(rewriter)
+    end
+end
 
 struct LowerJuliaMat <: IR.AbstractPass end
 
@@ -62,6 +71,7 @@ function IR.pass_run(::LowerJuliaMat, func_op)
             for op in IR.OperationIterator(block)
                 op_name = replace(name(op), "." => "_")
 
+                # if op is in the julia dialect
                 if length(op_name) >= 5 && op_name[1:5] == "julia"
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
@@ -70,15 +80,7 @@ function IR.pass_run(::LowerJuliaMat, func_op)
         end
     end
 
-    for (original, replacement) in replace_ops
-        rewriter = API.mlirIRRewriterCreateFromOp(original)
-
-        GC.@preserve rewriter begin
-            API.mlirRewriterBaseReplaceOpWithOperation(rewriter, original, replacement)
-        end
-        API.mlirIRRewriterDestroy(rewriter)
-    end
-
+    rewrite_references(replace_ops)  
 end
 
 struct LowerJuliaArith <: IR.AbstractPass end
@@ -96,6 +98,7 @@ function IR.pass_run(::LowerJuliaArith, func_op)
             for op in IR.OperationIterator(block)
                 op_name = replace(name(op), "." => "_")
 
+                # if op is in the julia dialect
                 if length(op_name) >= 5 && op_name[1:5] == "julia"
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
@@ -104,15 +107,7 @@ function IR.pass_run(::LowerJuliaArith, func_op)
         end
     end
 
-    for (original, replacement) in replace_ops
-        println("Replacing $original with $replacement")
-        rewriter = API.mlirIRRewriterCreateFromOp(original)
-
-        GC.@preserve rewriter begin
-            API.mlirRewriterBaseReplaceOpWithOperation(rewriter, original, replacement)
-        end
-        API.mlirIRRewriterDestroy(rewriter)
-    end
+    rewrite_references(replace_ops)
 end
 
 end

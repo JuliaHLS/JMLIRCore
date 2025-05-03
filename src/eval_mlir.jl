@@ -134,6 +134,15 @@ function eval_mlir(f, args...; ctx = IR.context())
 
         result = eval(dynamic_call)
 
+        # extract intrinsic information (for 2d matrices)
+        if typeof(result) <: AbstractArray
+            raw_ptr, aligned_ptr, _, shape_i, shape_j, stride = Tuple(result)
+            shape = (shape_i, shape_j)
+            result = unsafe_wrap(Array, Ptr{Int64}(aligned_ptr), shape; own = false)
+            result = permutedims(reshape(result, (shape[2],shape[1])), (2,1))
+        end
+
+        return result
     end
 
     return result

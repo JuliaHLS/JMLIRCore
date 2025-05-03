@@ -1,24 +1,16 @@
 using JMLIRCore
 using Test
+using StaticArrays
 
 
-function add_test(a, b)
-    return a + b
-end
+add_test(a, b) = a + b
+sub_test(a, b) = a - b
+mul_test(a, b) = a * b
+div_test(a, b) = a / b
+rem(A, B) = A % B
 
-
-function sub_test(a, b)
-    return a - b
-end
-
-
-function mul_test(a, b)
-    return a * b
-end
-
-
-function div_test(a, b)
-    return a / b
+function create_mat()
+    return @MMatrix [1 2 3 4 5; 6 7 8 9 0]
 end
 
 ## produces two basic blocks that merge at the same node
@@ -32,13 +24,6 @@ function multi_route_node(A, B)
 	
  	return result
 end
-
-
-function rem(A, B)
-    return A % B
-end
-
-
 
 
 @testset "JMLIRCore.jl" begin
@@ -131,11 +116,13 @@ end
 
     
    # #### REM ####
-   # @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
+   @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
 
    ### CONTROL FLOW ###
    # @test (@eval_mlir multi_route_node(5.0, 10.0)) == (@eval multi_route_node(5.0, 10.0)) 
    # @test (@eval_mlir multi_route_node(10.5, 5.2)) == (@eval multi_route_node(10.5, 5.2)) 
 
 
+   ## MATRIX OPERATION TEST ##
+   @test (@eval_mlir create_mat()) == (@eval create_mat())
 end
