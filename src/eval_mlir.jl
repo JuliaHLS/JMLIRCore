@@ -96,7 +96,10 @@ function eval_mlir(f, args...; ctx = IR.context())
         # ctx = IR.Context(op)
 
         # lower to linalg
+        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-tensor))" -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg))" -o /tmp/temp_out.mlir`, ctx)
+        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx)
+
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-linalg-to-affine-loops -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --lower-affine -o /tmp/temp_out.mlir`, ctx)

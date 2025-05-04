@@ -173,8 +173,4 @@ function mat_getindex(
     )
 end
 
-
-
-
-
 end

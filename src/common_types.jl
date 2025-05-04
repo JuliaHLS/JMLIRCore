@@ -46,8 +46,10 @@ get_op_with_ownership(module_::IR.Module) = IR.Operation(MLIR.API.mlirModuleGetO
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
 
-    if length(dims) == 1
+    for _ in 1:(3 - length(dims))
+        dims = reverse(dims)
         push!(dims, 1)
+        dims = reverse(dims)
     end
 
     type = IR.Type(T.parameters[2])

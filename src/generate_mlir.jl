@@ -195,4 +195,6 @@ function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
     push!(block, julia.mat_getindex(args; result=result, location))
 end
 
-
+function generate_mlir(::Val{:(adjoint)}, rettype::Type{<:Any})
+    return single_op_wrapper_output_is_result(julia.mat_adjoint)
+end

@@ -273,7 +273,13 @@ module _JuliaPassHelpers
     function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{AbstractArray}, new_ref)::Bool
         if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
             if mlir_fn === tosa.matmul
-                new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret)
+                zero_dense_attr = IR.DenseArrayAttribute([IR.Int64(0)])
+                println("is dense? $zero_dense_attr is $(IR.isdenseelements(zero_dense_attr))")
+                a_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), values=IR.DenseElementsAttribute([Int64(0)]))
+                b_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), values=IR.DenseElementsAttribute([Int64(0)]))
+                IR.insert_before!(prev.block, prev.prev_op, a_zp)
+                IR.insert_before!(prev.block, prev.prev_op, b_zp)
+                new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret; a_zp=IR.result(a_zp), b_zp=IR.result(b_zp))
             else
                 println("Replacing with $mlir_fn, with output $(prev.ret)")
                 new_op = mlir_fn(prev.prev_val, new_ref; output=prev.ret)
@@ -336,17 +342,15 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::
     # reorder the input matrix based on the input dimensions
     println("ret is: $ret with dims $(size(ret))")
     new_operand_order::Vector{IR.Value} = []
-    step_size = first(size(ret))
-    for step in 1:step_size
-        for outer_dim in 1:last(size(ret))
-            push!(new_operand_order, operands[(step_size * (outer_dim - 1)) + step])
-        end
-    end
 
-    println("Created new operands order $new_operand_order")
+    dim1, dim2, dim3 = size(ret)
+
+    reshaped_operands = reshape(operands, dim1, dim2, dim3)
+    reshaped_operands = permutedims(reshaped_operands, (3, 2, 1))
+    col_major_operands = vec(reshaped_operands)
 
     if IR.istensor(ret)
-        new_op = tensor.from_elements(new_operand_order, result=ret)
+        new_op = tensor.from_elements(col_major_operands, result=ret)
         IR.insert_after!(block, op, new_op)
     else
         error("Error: incorrect types used for julia.mat_inst")
@@ -357,17 +361,29 @@ end
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_adjoint)}, block::IR.Block, op::IR.Operation, replace_ops)
     # create permutation map
-    target_array = IR.DenseElementsAttribute([1,0])
+    ops = first(collect_operands(op))
+
     ret = IR.type.(collect_results(op))[1]
 
+    target_transformation = collect(ntuple(i -> findfirst(==(size(ret)[i]), size(ops)), 3))
+    target_transformation = target_transformation .- 1
+    target_array = IR.DenseArrayAttribute(Int32.(target_transformation)::Vector{Int32})
+
+    target_array = IR.NamedAttribute("perms", target_array)
+
+    # create the operation
+    # perm_op = tosa.const_(output = IR.TensorType(size(target_transformation), IR.Type(Int32)), values=target_array)
+    # IR.insert_before!(block, op, perm_op) 
+
     # create transpose op
-    new_op = tosa.transpose(first(collect_operands(op)), IR.NamedAttribute("perms", target_array), output=ret)
+    new_op = tosa.transpose(ops, target_array, output=ret)
 
     # insert into the program
     IR.insert_after!(block, op, new_op)
     push!(replace_ops, [op, new_op])
 
 end
+
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)

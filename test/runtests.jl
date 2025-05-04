@@ -32,6 +32,22 @@ function add_mat_test()
     return a + b
 end
 
+function sub_mat_test()
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    b = @MMatrix [10 20 30 40 0; 50 60 70 80 90]
+
+    return a - b
+end
+
+function matmul_test()
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    b = @MMatrix [10 20 30 40 0; 50 60 70 80 90]
+
+    return a * b'
+end
+
+
+
 ## produces two basic blocks that merge at the same node
 function multi_route_node(A, B)
 	result = 0
@@ -147,4 +163,6 @@ end
    @test (@eval_mlir modify_mat(2, 3, 5)) == (@eval modify_mat(2, 3, 5))
    @test (@eval_mlir set_and_get_mat(2, 3, 2, 2, 5)) == (@eval set_and_get_mat(2, 3, 2, 2, 5))
    @test (@eval_mlir add_mat_test()) == (@eval add_mat_test())
+   @test (@eval_mlir sub_mat_test()) == (@eval sub_mat_test())
+   @test (@eval_mlir matmul_test()) == (@eval matmul_test())
 end
