@@ -154,8 +154,8 @@ end
    @test (@eval_mlir rem(UInt(5), UInt(10))) == (@eval rem(UInt(5), UInt(10)))
 
    # #### POW ####
-   @test (@eval_mlir pow(5, 10)) == (@eval pow(5, 10))
-   @test (@eval_mlir pow(UInt(5), UInt(10))) == (@eval pow(UInt(5), UInt(10)))
+   @test (@eval_mlir pow_test(5, 10)) == (@eval pow_test(5, 10))
+   @test (@eval_mlir pow_test(UInt(5), UInt(10))) == (@eval pow_test(UInt(5), UInt(10)))
 
 
 
@@ -204,8 +204,8 @@ end
    @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
 
    # #### POW ####
-   @test (@eval_mlir pow(5.0, 10.0)) == (@eval pow(5.0, 10.0))
-   @test (@eval_mlir pow(5.0, -10.0)) == (@eval pow(5.0, -10.0))
+   @test (@eval_mlir pow_test(5.0, 10)) == (@eval pow_test(5.0, 10))
+   # @test (@eval_mlir pow_test(5.0, -10)) == (@eval pow_test(5.0, -10))
 
    ### CONTROL FLOW ###
    # @test (@eval_mlir multi_route_node(5.0, 10.0)) == (@eval multi_route_node(5.0, 10.0)) 

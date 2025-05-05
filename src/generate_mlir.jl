@@ -111,7 +111,7 @@ function generate_mlir(::Val{:rem}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.rem)
 end
 
-function generate_mlir(::Val{:^}, rettype::Type{<:Integer})
+function generate_mlir(::Val{:^}, rettype::Type{<:Real})
     return single_op_wrapper_with_result(julia.pow)
 end
 
