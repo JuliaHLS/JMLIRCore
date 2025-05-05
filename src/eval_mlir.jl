@@ -18,20 +18,6 @@ macro eval_mlir(call)
     end
 end
 
-# temp solution is just to run it externally, as it is not actually part of the main pipeline
-function registerAllUpstreamDialects!(ctx)
-    if LLVM.version() >= v"15"
-        registry = MLIR.API.mlirDialectRegistryCreate()
-        MLIR.API.mlirRegisterAllDialects(registry)
-        MLIR.API.mlirContextAppendDialectRegistry(ctx, registry)
-        MLIR.API.mlirDialectRegistryDestroy(registry)
-    else
-        MLIR.API.mlirRegisterAllDialects()
-    end
-
-    return nothing
-end
-
 # externally lower TOSA to linalg (unsupported by MLIR.jl)
 function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
     # extract str
@@ -50,15 +36,7 @@ function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
     # read from file back into the pipeline
     ir = read("/tmp/temp_out.mlir", String)
 
-    # registerAllUpstreamDialects!(ctx)
-    println("Num registered Dialects: $(IR.num_registered_dialects(context=ctx))")
-
     mod = parse(IR.Module, ir; context=ctx)
-    # ctx = IR.context(mod)
-
-    # IR.Operation(mod)
-    # get_op_with_ownership(mod)
-    # return mod
 end
 
 struct MatRes
@@ -162,10 +140,11 @@ function eval_mlir(f, args...; ctx = IR.context())
             # shape = (shape_i, shape_j)
             # result = unsafe_wrap(Array, Ptr{Int64}(aligned_ptr), shape; own = false)
             # result = permutedims(reshape(result, (shape[2],shape[1])), (2,1))
-            ptr = Ptr{Int64}(result.p2)
+            item_type = eltype(original_ret)
+            ptr = Ptr{item_type}(result.p2)
 
             corrected_dims = reverse(result.dims1)
-            result_out = unsafe_wrap(Array{Int64, 3}, ptr, Tuple(corrected_dims); own = false)
+            result_out = unsafe_wrap(Array{item_type, 3}, ptr, Tuple(corrected_dims); own = false)
             result_out = permutedims(reshape(result_out, corrected_dims), (3, 2, 1))
 
 

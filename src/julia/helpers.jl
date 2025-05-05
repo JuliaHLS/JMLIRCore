@@ -314,10 +314,16 @@ module _JuliaPassHelpers
     function convert_julia_op_to_mlir!(prev::reference_information, mlir_fn::Function, target_type::Type{AbstractArray}, new_ref)::Bool
         if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
             if mlir_fn === tosa.matmul
-                zero_dense_attr = IR.DenseArrayAttribute([IR.Int64(0)])
+                ret_type = IR.julia_type(eltype(IR.type.(collect_results(prev.prev_op))[1]))
+                println("RET: $ret_type")
+
+                println("Using $(IR.TensorType([1], IR.Type(ret_type)))")
+
+                zero_dense_attr = IR.DenseElementsAttribute([convert(ret_type, 0)])
+
                 println("is dense? $zero_dense_attr is $(IR.isdenseelements(zero_dense_attr))")
-                a_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), value=IR.DenseElementsAttribute([Int64(0)]))
-                b_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), value=IR.DenseElementsAttribute([Int64(0)]))
+                a_zp = tosa.const_(output=IR.TensorType([1], IR.Type(ret_type)), value=zero_dense_attr)
+                b_zp = tosa.const_(output=IR.TensorType([1], IR.Type(ret_type)), value=zero_dense_attr)
                 IR.insert_before!(prev.block, prev.prev_op, a_zp)
                 IR.insert_before!(prev.block, prev.prev_op, b_zp)
                 new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret; a_zp=IR.result(a_zp), b_zp=IR.result(b_zp))
