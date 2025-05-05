@@ -95,6 +95,7 @@ function eval_mlir(f, args...; ctx = IR.context())
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --lower-affine -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --expand-strided-metadata -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-scf-to-cf -o /tmp/temp_out.mlir`, ctx)
+        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-math-to-funcs -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-to-llvm -o /tmp/temp_out.mlir`, ctx)
 
         # initialise PassManager

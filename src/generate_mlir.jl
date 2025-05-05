@@ -1,4 +1,4 @@
-using MLIR.Dialects: arith, func, cf, memref, linalg, tosa, tensor
+using MLIR.Dialects: arith, func, cf, memref, linalg, tosa, tensor, math
 using MLIR
 using MLIR.IR
 using LinearAlgebra
@@ -111,6 +111,9 @@ function generate_mlir(::Val{:rem}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.rem)
 end
 
+function generate_mlir(::Val{:^}, rettype::Type{<:Integer})
+    return single_op_wrapper_with_result(julia.pow)
+end
 
 ### PREDICATES ###
 function cmpi_pred(predicate)

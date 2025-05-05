@@ -11,7 +11,7 @@ using MLIR.API
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa, tensor
+using MLIR.Dialects: arith, tosa, tensor, math, scf
 
 export lower_op_to_mlir
 
@@ -23,7 +23,7 @@ module _JuliaPassHelpers
     using MLIR.IR
     import MLIR.IR
     using MLIR.API
-    using MLIR.Dialects: arith, tosa, tensor
+    using MLIR.Dialects: arith, tosa, tensor, math, scf
 
     export unroll_operation!
     export unroll_operation_mat!
@@ -227,7 +227,6 @@ module _JuliaPassHelpers
                 prev_val = collect_results(prev_op)[1]
 
                 replaced = true
-
             elseif types[1] <: AbstractFloat && types[2] <: AbstractFloat
                 new_op = fn_float((prev_val), new_ref; result=ret)
                 IR.insert_after!(block, prev_op, new_op)
@@ -244,7 +243,6 @@ module _JuliaPassHelpers
             push!(replace_ops, [op, prev_op])
         end
     end
-
 
     """ unroll n-way julia operation into a tree of operations """
     function unroll_operation!(op::IR.Operation, block, fn_sint::Function, fn_uint::Function, fn_float::Function, replace_ops)
@@ -368,6 +366,94 @@ end
 function lower_op_to_mlir(op_name::Val{:(julia_rem)}, block::IR.Block, op::IR.Operation, replace_ops)
     unroll_operation!(op, block, arith.remsi, arith.remui, arith.remf, replace_ops)
     array_unimplemented(op)
+end
+
+function lower_op_to_mlir(op_name::Val{:(julia_pow)}, block::IR.Block, op::IR.Operation, replace_ops)
+    # unroll_operation!(op, block, math.ipowi, math.powf, replace_ops)
+    # array_unimplemented(op)
+    operands = collect_operands(op)
+    types = IR.julia_type.(IR.type.(operands))
+
+    ret = IR.type.(collect_results(op))[1]
+
+    prev_op = op
+    prev_ref = operands[1]
+    prev_val = operands[1]
+
+    replaced = false
+
+    for new_ref in operands[2:end]
+        if types[1] <: Integer && types[2] <: Integer
+            new_op = math.ipowi(prev_val, new_ref; result=ret)
+            IR.insert_after!(block, prev_op, new_op)
+            prev_op = new_op
+            prev_ref = new_ref
+            prev_val = collect_results(prev_op)[1]
+
+            replaced = true
+
+        elseif types[1] <: AbstractFloat && types[2] <: Integer
+            ops = collect_operands(op)
+
+            # create constant with 0 idx attribute with type 
+            index_type = IR.Type(API.mlirIndexTypeGet(context()))
+            zero_idx_attr = Attribute(API.mlirIntegerAttrGet(index_type, Int64(0)))
+            one_idx_attr = Attribute(API.mlirIntegerAttrGet(index_type, Int64(1)))
+
+            # create constants to iterate over
+            c0 = arith.constant(; value=zero_idx_attr, result=index_type)
+            c1 = arith.constant(; value=one_idx_attr, result=index_type)
+            cst = arith.constant(; value=1.0, result=IR.Type(types[1]))
+
+            # cast power to index type
+            idx_cast_op = arith.index_cast((ops[2]); out=IR.IndexType())
+            IR.insert_before!(block, op, idx_cast_op)
+
+            # insert ops
+            IR.insert_before!(block, op, c0)
+            IR.insert_before!(block, op, c1)
+            IR.insert_before!(block, op, cst)
+
+            # internal Region
+            region = IR.Region()
+            loop_block = IR.Block()
+
+            # add loop invariant
+            v1 = IR.push_argument!(loop_block, index_type)
+            v2 = IR.push_argument!(loop_block, IR.Type(types[1]))
+            push!(region, loop_block)
+
+            # create main scf loop
+            main_loop = scf.for_(IR.result(c0), IR.result(idx_cast_op), IR.result(c1), [IR.result(cst)]; results= [IR.Type(types[1])], region=region)
+
+            # new_op = ((prev_val), new_ref; result=ret)
+            # println("Created main loop with operands: $(v)")
+
+            IR.insert_after!(block, prev_op, main_loop)
+
+            # insert items into the block
+            mul = arith.mulf(ops[1], v2)
+            push!(loop_block, mul)
+            
+            yield = scf.yield([IR.result(mul)])
+            push!(loop_block, yield)
+
+            # update references
+            prev_op = main_loop
+            prev_ref = IR.result(main_loop)
+            prev_val = collect_results(prev_op)[1]
+
+            replaced = true
+        else
+            error("Raising pow to with type arguments: $types is not supported yet")
+        end
+
+    end
+
+    if replaced
+        push!(replace_ops, [op, prev_op])
+    end
+
 end
 
 function lower_op_to_mlir(op_name::Val{:(julia_cmp)}, block::IR.Block, op::IR.Operation, replace_ops)

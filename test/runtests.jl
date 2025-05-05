@@ -7,6 +7,7 @@ add_test(a, b) = a + b
 sub_test(a, b) = a - b
 mul_test(a, b) = a * b
 div_test(a, b) = a / b
+pow_test(a, b) = a ^ b
 rem(A, B) = A % B
 
 function create_mat()
@@ -152,6 +153,12 @@ end
    @test (@eval_mlir rem(5, 10)) == (@eval rem(5, 10))
    @test (@eval_mlir rem(UInt(5), UInt(10))) == (@eval rem(UInt(5), UInt(10)))
 
+   # #### POW ####
+   @test (@eval_mlir pow(5, 10)) == (@eval pow(5, 10))
+   @test (@eval_mlir pow(UInt(5), UInt(10))) == (@eval pow(UInt(5), UInt(10)))
+
+
+
    ### CONTROL FLOW ###
    @test (@eval_mlir multi_route_node(5, 10)) == (@eval multi_route_node(5, 10)) 
    @test (@eval_mlir multi_route_node(10, 5)) == (@eval multi_route_node(10, 5)) 
@@ -195,6 +202,10 @@ end
     
    # #### REM ####
    @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
+
+   # #### POW ####
+   @test (@eval_mlir pow(5.0, 10.0)) == (@eval pow(5.0, 10.0))
+   @test (@eval_mlir pow(5.0, -10.0)) == (@eval pow(5.0, -10.0))
 
    ### CONTROL FLOW ###
    # @test (@eval_mlir multi_route_node(5.0, 10.0)) == (@eval multi_route_node(5.0, 10.0)) 

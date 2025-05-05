@@ -33,7 +33,7 @@ module JuliaPasses
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa, tensor
+using MLIR.Dialects: arith, tosa, tensor, math
 
 include("helpers.jl")
 

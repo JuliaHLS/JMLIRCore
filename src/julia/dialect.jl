@@ -5,7 +5,7 @@ using MLIR:get_type, julia_type
 using MLIR.IR
 
 # Generate Arithmetic Operators
-for f in (:add, :sub, :mul, :div, :rem)
+for f in (:add, :sub, :mul, :div, :rem, :pow)
     @eval function $f(
         operands::Value...; result=nothing::Union{Nothing,IR.Type}, output=nothing::Union{Nothing,IR.Type}, location=Location()
     )
