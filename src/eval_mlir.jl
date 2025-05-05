@@ -76,7 +76,6 @@ function eval_mlir(f, args...; ctx = IR.context())
 #     # get the function ptr within the JIT
     # fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
-    println("Running code_mlir")
     mod = code_mlir(f, arg_types; ctx=ctx)
     println("Produced IR Code: $mod")
 
@@ -106,20 +105,12 @@ function eval_mlir(f, args...; ctx = IR.context())
         IR.enable_verifier!(pm, true)
         IR.verifyall(mod)
 
-        # @atomic op.owned = true
-
-        # mod = IR.Module(Location())
-        # body = IR.body(mod)
-        # push!(body, op)
-
-        # mod = op
         println("Processing mod: $mod with name $(String(nameof(f)))")
 
         # create the jit (locally)
         jit = IR.ExecutionEngine(mod, 0)
         fptr = IR.lookup(jit, String(nameof(f)))
 
-        println("got fptr $fptr")
 
         expanded_args = eval(Expr(:tuple, args[2:end]...))
         expanded_types = Expr(:tuple, processed_arg_types_tuple...)
@@ -130,16 +121,11 @@ function eval_mlir(f, args...; ctx = IR.context())
         end
 
         dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
-        println("calling: $dynamic_call")
 
         result = eval(dynamic_call)
 
         # extract intrinsic information (for 2d matrices)
         if result isa MatRes
-            # raw_ptr, aligned_ptr, _, shape_i, shape_j, stride = Tuple(result)
-            # shape = (shape_i, shape_j)
-            # result = unsafe_wrap(Array, Ptr{Int64}(aligned_ptr), shape; own = false)
-            # result = permutedims(reshape(result, (shape[2],shape[1])), (2,1))
             item_type = eltype(original_ret)
             ptr = Ptr{item_type}(result.p2)
 

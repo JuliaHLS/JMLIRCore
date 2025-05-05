@@ -112,10 +112,6 @@ function process_node(inst::Nothing, context::Context, blocks::Blocks)
 end
 
 function process_node(inst::GlobalRef, context::Context, blocks::Blocks)
-    # println("Info: Received GlobalRef from Julia IR with name $inst. Skipping...")
-    # args = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.name), context, blocks)
-    # # dest = blocks.blocks[inst.label]
-    # println("Got args: $args and dest: $dest")
     error("Julia IR cannot process GlobalRef")
 end
 

@@ -315,20 +315,14 @@ module _JuliaPassHelpers
         if prev.operand_types[1] <: target_type && prev.operand_types[2] <: target_type
             if mlir_fn === tosa.matmul
                 ret_type = IR.julia_type(eltype(IR.type.(collect_results(prev.prev_op))[1]))
-                println("RET: $ret_type")
-
-                println("Using $(IR.TensorType([1], IR.Type(ret_type)))")
-
                 zero_dense_attr = IR.DenseElementsAttribute([convert(ret_type, 0)])
 
-                println("is dense? $zero_dense_attr is $(IR.isdenseelements(zero_dense_attr))")
                 a_zp = tosa.const_(output=IR.TensorType([1], IR.Type(ret_type)), value=zero_dense_attr)
                 b_zp = tosa.const_(output=IR.TensorType([1], IR.Type(ret_type)), value=zero_dense_attr)
                 IR.insert_before!(prev.block, prev.prev_op, a_zp)
                 IR.insert_before!(prev.block, prev.prev_op, b_zp)
                 new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret; a_zp=IR.result(a_zp), b_zp=IR.result(b_zp))
             else
-                println("Replacing with $mlir_fn, with output $(prev.ret)")
                 new_op = mlir_fn(prev.prev_val, new_ref; output=prev.ret)
             end
 
@@ -387,7 +381,6 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::
     ret = IR.type.(collect_results(op))[1]
 
     # reorder the input matrix based on the input dimensions
-    println("ret is: $ret with dims $(size(ret))")
     new_operand_order::Vector{IR.Value} = []
 
     dim1, dim2, dim3 = size(ret)

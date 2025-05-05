@@ -35,7 +35,7 @@ function code_mlir(f, types; ctx = IR.context())
     # end
 
     # load dialects
-    for dialect in (:func, :cf, :scf, :memref, :linalg, :tensor)
+    for dialect in (:func, :cf, :memref, :linalg, :tensor)
         IR.register_dialect!(IR.DialectHandle(dialect); context=ctx)
     end
 
@@ -115,7 +115,6 @@ function code_mlir(f, types; ctx = IR.context())
 
     ### Verify validity of the MLIR generated ###
     IR.verifyall(op)
-    println("Created op: $op")
 
     GC.@preserve op ctx begin
         mod = IR.Module(Location())
@@ -125,7 +124,6 @@ function code_mlir(f, types; ctx = IR.context())
         ### Lower from julia dialect ###
         run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
         run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
-        println("run passes on mod of type: $(typeof(mod))")
     end
 
     ### return result ###
