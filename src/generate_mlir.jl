@@ -3,7 +3,8 @@ using MLIR
 using MLIR.IR
 using LinearAlgebra
 
-include("dialect.jl")
+include("julia/dialect.jl")
+using .julia
 
 """ Method Wrapper """
 struct MethodDetails
@@ -32,7 +33,7 @@ end
 translate_intrinsic(::typeof(Base.add_int)) = return :+
 translate_intrinsic(::typeof(Base.sub_int)) = return :-
 translate_intrinsic(::typeof(Base.mul_int)) = return :*
-translate_intrinsic(fn::Any) = return first(methods(fn)).name
+translate_intrinsic(fn::Any) = first(methods(fn)).name == :IntrinsicFunction ? fn : first(methods(fn)).name
 
 function generate_mlir(md::MethodDetails)
     return generate_mlir(Val(md.sym), (md.rettype))
@@ -106,6 +107,10 @@ function generate_mlir(::Val{:/}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.div)
 end
 
+function generate_mlir(::Val{:rem}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(julia.rem)
+end
+
 
 ### PREDICATES ###
 function cmpi_pred(predicate)
@@ -156,10 +161,6 @@ function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.shrui)
 end
 
-function generate_mlir(::Val{Base.checked_srem_int}, rettype::Type{<:Integer})
-    return single_op_wrapper_out_is_result(arith.remsi)
-end
-
 function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat})
     return single_op_wrapper_with_result(arith.sitofp)
 end
@@ -190,7 +191,10 @@ function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
 end
 
 function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
-    return single_op_wrapper_with_result(julia.mat_getindex)
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    push!(block, julia.mat_getindex(args; result=result, location))
 end
 
-
+function generate_mlir(::Val{:(adjoint)}, rettype::Type{<:Any})
+    return single_op_wrapper_output_is_result(julia.mat_adjoint)
+end

@@ -5,7 +5,7 @@ using MLIR:get_type, julia_type
 using MLIR.IR
 
 # Generate Arithmetic Operators
-for f in (:add, :sub, :mul, :div)
+for f in (:add, :sub, :mul, :div, :rem)
     @eval function $f(
         operands::Value...; result=nothing::Union{Nothing,IR.Type}, output=nothing::Union{Nothing,IR.Type}, location=Location()
     )
@@ -147,15 +147,14 @@ function mat_setindex(
 end
 
 function mat_getindex(
-    source::Value,
-    indices::Value;
+    args::Vector{Value};
     result::IR.Type,
     # gather_dims, TODO: add support for dims
     unique=nothing,
     location=Location(),
 )
     _results = IR.Type[result,]
-    _operands = Value[source, indices]
+    _operands = Value[args...]
     _owned_regions = Region[]
     _successors = Block[]
     # _attributes = NamedAttribute[namedattribute("gather_dims", gather_dims),]
@@ -173,9 +172,5 @@ function mat_getindex(
         result_inference=false,
     )
 end
-
-
-
-
 
 end

@@ -80,7 +80,7 @@ Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(i
 
 
 # TODO: can I simplify this, given that they are an intrinsic_type?
-const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===)])
+const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===), Base.:%, LinearAlgebra.Adjoint, Base.transpose, Base.adjoint])
 """ Tag abstract calls with NoinlineCallInfo when needed """
 function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 

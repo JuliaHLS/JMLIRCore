@@ -1,25 +1,95 @@
 using JMLIRCore
 using Test
+using StaticArrays
 
 
-function add_test(a, b)
+add_test(a, b) = a + b
+sub_test(a, b) = a - b
+mul_test(a, b) = a * b
+div_test(a, b) = a / b
+rem(A, B) = A % B
+
+function create_mat()
+    return @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+end
+
+function modify_mat(idx1, idx2, val)
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    a[idx1, idx2] = val
+    return a
+end
+
+function set_and_get_mat(idx1, idx2, ret_idx1, ret_idx2, val)
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    a[idx1, idx2] = val
+    return a[ret_idx1, ret_idx2]
+end
+
+function add_mat_test()
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    b = @MMatrix [10 20 30 40 0; 50 60 70 80 90]
+
     return a + b
 end
 
+function sub_mat_test()
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    b = @MMatrix [10 20 30 40 0; 50 60 70 80 90]
 
-function sub_test(a, b)
     return a - b
 end
 
+function matmul_test()
+    a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+    b = @MMatrix [10 20 30 40 0; 50 60 70 80 90]
 
-function mul_test(a, b)
-    return a * b
+    return a * b'
 end
 
 
-function div_test(a, b)
-    return a / b
+function create_mat_float()
+    return @MMatrix [1.2 2.2 3.2 4.2 5.2; 6.2 7.2 8.2 9.2 0.2]
 end
+
+function modify_mat_float(idx1, idx2, val)
+    a = @MMatrix [1.2 2.2 3.2 4.2 5.2; 6.2 7.2 8.2 9.2 0.2]
+    a[idx1, idx2] = val
+    return a
+end
+
+function set_and_get_mat_float(idx1, idx2, ret_idx1, ret_idx2, val)
+    a = @MMatrix [1.2 2.2 3.2 4.2 5.2; 6.2 7.2 8.2 9.2 0.2]
+    a[idx1, idx2] = val
+    return a[ret_idx1, ret_idx2]
+end
+
+function add_mat_float_test()
+    a = @MMatrix [1.2 2.2 3.2 4.2 5.2; 6.2 7.2 8.2 9.2 0.2]
+    b = @MMatrix [10.2 20.2 30.2 40.2 0.2; 50.2 60.2 70.2 80.2 90.2]
+
+    return a + b
+end
+
+function sub_mat_float_test()
+    a = @MMatrix [1.2 2.2 3.2 4.2 5.2; 6.2 7.2 8.2 9.2 0.2]
+    b = @MMatrix [10.2 20.2 30.2 40.2 0.2; 50.2 60.2 70.2 80.2 90.2]
+
+    return a - b
+end
+
+function matmul_float_test()
+    a = @MMatrix [1.2 2.2 3.2 4.2 5.2; 6.2 7.2 8.2 9.2 0.2]
+    b = @MMatrix [10.2 20.2 30.2 40.2 0.2; 50.2 60.2 70.2 80.2 90.2]
+
+    return a * b'
+end
+
+function transpose_test()
+   a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
+
+   return a'
+end
+
 
 ## produces two basic blocks that merge at the same node
 function multi_route_node(A, B)
@@ -32,13 +102,6 @@ function multi_route_node(A, B)
 	
  	return result
 end
-
-
-function rem(A, B)
-    return A % B
-end
-
-
 
 
 @testset "JMLIRCore.jl" begin
@@ -131,11 +194,28 @@ end
 
     
    # #### REM ####
-   # @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
+   @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
 
    ### CONTROL FLOW ###
    # @test (@eval_mlir multi_route_node(5.0, 10.0)) == (@eval multi_route_node(5.0, 10.0)) 
    # @test (@eval_mlir multi_route_node(10.5, 5.2)) == (@eval multi_route_node(10.5, 5.2)) 
 
 
+   ## MATRIX OPERATION TEST ##
+   @test (@eval_mlir create_mat()) == (@eval create_mat())
+   @test (@eval_mlir modify_mat(2, 3, 5)) == (@eval modify_mat(2, 3, 5))
+   @test (@eval_mlir set_and_get_mat(2, 3, 2, 2, 5)) == (@eval set_and_get_mat(2, 3, 2, 2, 5))
+   @test (@eval_mlir add_mat_test()) == (@eval add_mat_test())
+   @test (@eval_mlir sub_mat_test()) == (@eval sub_mat_test())
+   @test (@eval_mlir matmul_test()) == (@eval matmul_test())
+
+   @test (@eval_mlir create_mat_float()) == (@eval create_mat_float())
+   # @test (@eval_mlir modify_mat_float(2, 3, 5)) == (@eval modify_mat_float(2, 3, 5))
+   # @test (@eval_mlir set_and_get_mat_float(2, 3, 2, 2, 5)) == (@eval set_and_get_mat_float(2, 3, 2, 2, 5))
+   @test (@eval_mlir add_mat_float_test()) == (@eval add_mat_float_test())
+   @test (@eval_mlir sub_mat_float_test()) == (@eval sub_mat_float_test())
+   @test (@eval_mlir matmul_float_test()) == (@eval matmul_float_test())
+   @test (@eval_mlir modify_mat_float(2, 3, 5.0)) == (@eval modify_mat_float(2, 3, 5.0))
+   @test (@eval_mlir set_and_get_mat_float(2, 3, 2, 2, 5.0)) == (@eval set_and_get_mat_float(2, 3, 2, 2, 5.0))
+   @test (@eval_mlir transpose_test()) == (@eval transpose_test())
 end

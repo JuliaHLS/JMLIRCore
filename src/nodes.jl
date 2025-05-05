@@ -111,6 +111,10 @@ function process_node(inst::Nothing, context::Context, blocks::Blocks)
     println("Info: Received empty node from Julia IR. Skipping...")
 end
 
+function process_node(inst::GlobalRef, context::Context, blocks::Blocks)
+    error("Julia IR cannot process GlobalRef")
+end
+
 function process_node(inst, context::Context, blocks::Blocks)
-  error("unhandled ir $(inst)")
+    error("unhandled ir $(inst) of type $(typeof(inst))")
 end
