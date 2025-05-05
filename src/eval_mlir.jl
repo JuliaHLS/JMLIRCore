@@ -50,9 +50,10 @@ function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
     # read from file back into the pipeline
     ir = read("/tmp/temp_out.mlir", String)
 
-    registerAllUpstreamDialects!(ctx)
+    # registerAllUpstreamDialects!(ctx)
+    println("Num registered Dialects: $(IR.num_registered_dialects(context=ctx))")
 
-    mod = parse(IR.Module, ir)
+    mod = parse(IR.Module, ir; context=ctx)
     # ctx = IR.context(mod)
 
     # IR.Operation(mod)
@@ -60,10 +61,23 @@ function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
     # return mod
 end
 
+struct MatRes
+  p1    :: Ptr{Cvoid}
+  p2    :: Ptr{Cvoid}
+  n     :: Int64
+  dims1 :: NTuple{3,Int64}
+  dims2 :: NTuple{3,Int64}
+end
 
 "Execute function using MLIR pipeline"
 function eval_mlir(f, args...; ctx = IR.context())
     # registerAllUpstreamDialects!(ctx)
+    for dialect in (:func, :cf, :scf, :llvm, :memref, :linalg, :tensor)
+        IR.register_dialect!(IR.DialectHandle(dialect); context=ctx)
+    end
+
+
+    IR.allow_unregistered_dialects!(true; context=ctx)
 
     # preprocess arguments
     arg_types = eval(Expr(
@@ -96,8 +110,7 @@ function eval_mlir(f, args...; ctx = IR.context())
         # ctx = IR.Context(op)
 
         # lower to linalg
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-tensor))" -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg))" -o /tmp/temp_out.mlir`, ctx)
+        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named, tosa-to-linalg))" -o /tmp/temp_out.mlir`, ctx)
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx)
 
         mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx)
@@ -133,16 +146,40 @@ function eval_mlir(f, args...; ctx = IR.context())
         expanded_args = eval(Expr(:tuple, args[2:end]...))
         expanded_types = Expr(:tuple, processed_arg_types_tuple...)
 
+        original_ret = ret
+        if ret <: AbstractArray
+            ret = MatRes
+        end
+
         dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
+        println("calling: $dynamic_call")
 
         result = eval(dynamic_call)
 
         # extract intrinsic information (for 2d matrices)
-        if typeof(result) <: AbstractArray
-            raw_ptr, aligned_ptr, _, shape_i, shape_j, stride = Tuple(result)
-            shape = (shape_i, shape_j)
-            result = unsafe_wrap(Array, Ptr{Int64}(aligned_ptr), shape; own = false)
-            result = permutedims(reshape(result, (shape[2],shape[1])), (2,1))
+        if result isa MatRes
+            # raw_ptr, aligned_ptr, _, shape_i, shape_j, stride = Tuple(result)
+            # shape = (shape_i, shape_j)
+            # result = unsafe_wrap(Array, Ptr{Int64}(aligned_ptr), shape; own = false)
+            # result = permutedims(reshape(result, (shape[2],shape[1])), (2,1))
+            ptr = Ptr{Int64}(result.p2)
+
+            corrected_dims = reverse(result.dims1)
+            result_out = unsafe_wrap(Array{Int64, 3}, ptr, Tuple(corrected_dims); own = false)
+            result_out = permutedims(reshape(result_out, corrected_dims), (3, 2, 1))
+
+
+            for _ in 1:(length(size(result_out)) - length(size(original_ret)))
+                for (idx, val) in enumerate(size(result_out))
+                    if val == 1
+                        result_out = dropdims(result_out; dims = idx) 
+                    end
+                end
+            end
+
+            GC.gc()
+
+            result = convert(original_ret, result_out)
         end
 
         return result

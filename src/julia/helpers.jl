@@ -108,6 +108,47 @@ module _JuliaPassHelpers
         return attributes
     end
 
+    # transform vector indices into index type, 0-based indexing and fill
+    # missing indices to match dimensions required
+    function transform_indices(block, op, indices::Vector{Value})::Vector{Value}
+        # convert input type to indextype
+        new_indices::Vector{Value} = []
+
+        sub_const = arith.constant(;value=1,result=IR.Type(Int))
+        IR.insert_before!(block, op, sub_const)
+
+        for index in indices
+            sub_op = arith.subi(index, IR.result(sub_const))
+            IR.insert_before!(block, op, sub_op)
+
+            index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
+            IR.insert_before!(block, op, index_op)
+
+            res = IR.result(index_op, 1)
+            push!(new_indices, res)
+        end
+
+        # deal with vector indices
+        rev = false
+        new_indices = reverse(new_indices)
+        for _ in 1:(3 - length(new_indices))
+            index_op = arith.constant(;value=0,result=IR.Type(Int))
+            IR.insert_before!(block, op, index_op)
+
+            idx_cast_op = arith.index_cast(IR.result(index_op, 1); out=IR.IndexType())
+            IR.insert_before!(block, op, idx_cast_op)
+
+            push!(new_indices, IR.result(idx_cast_op, 1))
+            
+            rev = true
+        end
+
+        if rev
+            new_indices = reverse(new_indices)
+        end
+
+        new_indices
+    end
 
 
     # extract the underlying type, e.g Integer given an array of Integers
@@ -275,8 +316,8 @@ module _JuliaPassHelpers
             if mlir_fn === tosa.matmul
                 zero_dense_attr = IR.DenseArrayAttribute([IR.Int64(0)])
                 println("is dense? $zero_dense_attr is $(IR.isdenseelements(zero_dense_attr))")
-                a_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), values=IR.DenseElementsAttribute([Int64(0)]))
-                b_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), values=IR.DenseElementsAttribute([Int64(0)]))
+                a_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), value=IR.DenseElementsAttribute([Int64(0)]))
+                b_zp = tosa.const_(output=IR.TensorType([1], IR.Type(Int64)), value=IR.DenseElementsAttribute([Int64(0)]))
                 IR.insert_before!(prev.block, prev.prev_op, a_zp)
                 IR.insert_before!(prev.block, prev.prev_op, b_zp)
                 new_op = mlir_fn(prev.prev_val, new_ref, c=prev.ret; a_zp=IR.result(a_zp), b_zp=IR.result(b_zp))
@@ -359,24 +400,43 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::
     push!(replace_ops, [op, new_op])
 end
 
+function tosa.transpose(input1::Value, perms::Value; output::IR.Type, location=Location())
+    _results = IR.Type[output,]
+    _operands = Value[input1, perms]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "tosa.transpose",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
 function lower_op_to_mlir(op_name::Val{:(julia_mat_adjoint)}, block::IR.Block, op::IR.Operation, replace_ops)
     # create permutation map
     ops = first(collect_operands(op))
 
     ret = IR.type.(collect_results(op))[1]
 
+    IR.allow_unregistered_dialects!(true)
+
     target_transformation = collect(ntuple(i -> findfirst(==(size(ret)[i]), size(ops)), 3))
     target_transformation = target_transformation .- 1
-    target_array = IR.DenseArrayAttribute(Int32.(target_transformation)::Vector{Int32})
-
-    target_array = IR.NamedAttribute("perms", target_array)
+    target_array = IR.NamedAttribute("perms", IR.DenseArrayAttribute(Int32.(target_transformation)::Vector{Int32}))
 
     # create the operation
     # perm_op = tosa.const_(output = IR.TensorType(size(target_transformation), IR.Type(Int32)), values=target_array)
     # IR.insert_before!(block, op, perm_op) 
 
     # create transpose op
-    new_op = tosa.transpose(ops, target_array, output=ret)
+    new_op = tosa.transpose(ops, target_array; output=ret)
 
     # insert into the program
     IR.insert_after!(block, op, new_op)
@@ -393,46 +453,14 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
     sub_const = arith.constant(;value=1,result=IR.Type(Int))
     IR.insert_before!(block, op, sub_const)
 
-    # convert n julia indices into index ops
-    new_idx_ops = []
-    for idx in operands[2:end]
-        sub_op = arith.subi(idx, IR.result(sub_const))
-        IR.insert_before!(block, op, sub_op)
-
-        index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
-        IR.insert_before!(block, op, index_op)
-
-        push!(new_idx_ops, index_op)
-    end
-
-    operands[2:end] = IR.result.(new_idx_ops)
+    indices::Vector{Value} = operands[2:end]
 
     # create operation
     gather_dims = IR.DenseArrayAttribute([0])
     ret = IR.type.(collect_results(op))[1]
 
-    # create output type
-    # ret = IR.TensorType([1], ret)
-
-    new_indices = operands[2:end]
-
-    # fix index annotations
-    if length(new_indices) == 1
-        index_op = arith.constant(;value=0,result=IR.Type(Int))
-        IR.insert_before!(block, op, index_op)
-
-        idx_cast_op = arith.index_cast(IR.result(index_op, 1); out=IR.IndexType())
-        IR.insert_before!(block, op, idx_cast_op)
-
-        push!(new_indices, IR.result(idx_cast_op, 1))
-        
-        if first(size(operands[1])) == 1 && last(size(operands[1])) != 1
-            new_indices = reverse(new_indices)
-        end
-    end
-
     # create transpose op
-    new_op = tensor.extract(operands[1], new_indices; result=ret)
+    new_op = tensor.extract(operands[1], _JuliaPassHelpers.transform_indices(block, op, indices); result=ret)
 
     # insert into the program
     IR.insert_after!(block, op, new_op)
@@ -449,45 +477,7 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_setindex)}, block::IR.Block, 
     dest::Value = operands[2]
     indices::Vector{Value} = operands[3:end]
 
-    # convert input type to indextype
-    new_indices::Vector{Value} = []
-
-    sub_const = arith.constant(;value=1,result=IR.Type(Int))
-    IR.insert_before!(block, op, sub_const)
-
-    for index in indices
-        # if type(index) != IR.IndexType()
-            # IR.type!(scalar, IR.IndexType())
-            # new_scalar = arith.constant(;result=IR.IndexType(), value=scalar)
-            sub_op = arith.subi(index, IR.result(sub_const))
-            IR.insert_before!(block, op, sub_op)
-
-            index_op = arith.index_cast(IR.result(sub_op); out=IR.IndexType())
-            IR.insert_before!(block, op, index_op)
-
-            res = IR.result(index_op, 1)
-            push!(new_indices, res)
-        # else
-            # push!(new_indices, index)
-        # end
-    end
-
-    # deal with vector indices
-    if length(new_indices) == 1
-        index_op = arith.constant(;value=0,result=IR.Type(Int))
-        IR.insert_before!(block, op, index_op)
-
-        idx_cast_op = arith.index_cast(IR.result(index_op, 1); out=IR.IndexType())
-        IR.insert_before!(block, op, idx_cast_op)
-
-        push!(new_indices, IR.result(idx_cast_op, 1))
-        
-        if first(size(dest)) == 1 && last(size(dest)) != 1
-            new_indices = reverse(new_indices)
-        end
-    end
-
-    new_op = tensor.insert(scalar, dest, new_indices; result=ret)
+    new_op = tensor.insert(scalar, dest, _JuliaPassHelpers.transform_indices(block, op, indices); result=ret)
     IR.insert_after!(block, op, new_op)
 
     push!(replace_ops, [op, new_op])
