@@ -18,7 +18,8 @@ struct MethodDetails
     # translate intrinsics (sometimes unavoidable if code templates
     # are pre-determined)
     function MethodDetails(fn::Function)
-        fn_sym::Union{Symbol, Nothing} = translate_intrinsic(fn)
+        fn_sym::Union{Symbol, Nothing} = translate_intrinsic(Val(nameof(fn)), fn)
+        println("Mapped $fn to $fn_sym")
         new(clean_mangled_symbol(fn_sym), first(Base.return_types(fn)))
     end
 
@@ -30,10 +31,11 @@ struct MethodDetails
 end
 
 ## intrinsic to symbol mapping
-translate_intrinsic(::typeof(Base.add_int)) = return :+
-translate_intrinsic(::typeof(Base.sub_int)) = return :-
-translate_intrinsic(::typeof(Base.mul_int)) = return :*
-translate_intrinsic(fn::Any) = first(methods(fn)).name == :IntrinsicFunction ? fn : first(methods(fn)).name
+translate_intrinsic(::Val{:(add_int)}, fn) = return :+
+translate_intrinsic(::Val{:(sub_int)}, fn) = return :-
+translate_intrinsic(::Val{:(mul_int)}, fn) = return :*
+translate_intrinsic(::Val{:(not_int)}, fn) = return :(not_int)
+translate_intrinsic(::Val{<:Any}, fn) = first(methods(fn)).name == :IntrinsicFunction ? fn : first(methods(fn)).name
 
 function generate_mlir(md::MethodDetails)
     return generate_mlir(Val(md.sym), (md.rettype))
@@ -167,6 +169,11 @@ end
 function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat})
     return single_op_wrapper_with_result(arith.sitofp)
 end
+
+function generate_mlir(::Val{:(not_int)}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(julia.not_int)
+end
+
 
 
 # Array operations

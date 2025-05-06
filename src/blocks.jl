@@ -51,12 +51,12 @@ function get_value(x, context::Context, blocks::Blocks)
     elseif x isa ScalarTypes 
         IR.result(push!(blocks.current_block, arith.constant(; value=x)))
     elseif x isa Tuple       # process all tuple types
-        results::Array{IR.Value} = []
+        results::Vector{IR.Value} = []
         for init_val ∈ collect(x)
             ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=init_val)))
             push!(results, ssa_res)
         end
-        results::Array{IR.Value}
+        results::Vector{IR.Value}
     else
         error("could not use value $x of type $(typeof(x)) inside MLIR. Please review ScalarTypes.")
     end

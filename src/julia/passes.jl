@@ -103,6 +103,9 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                     if length(op_name) >= 9 && op_name[6:9] == "mat"
                         continue
                     end
+                    if op_name == "julia_mul"
+                        println("HERE")
+                    end
 
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)

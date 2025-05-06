@@ -218,6 +218,8 @@ module _JuliaPassHelpers
 
         replaced = false
 
+        println("processing: $op with ret type: $types")
+
         for new_ref in operands[2:end]
             if types[1] <: Integer && types[2] <: Integer
                 new_op = fn_int(prev_val, new_ref; result=ret)
@@ -235,11 +237,14 @@ module _JuliaPassHelpers
                 prev_val = collect_results(prev_op)[1]
 
                 replaced = true
+            else
+                println("GOT TYPES: $types")
             end
 
         end
 
         if replaced
+            println("planning to replace $op with $prev_op")
             push!(replace_ops, [op, prev_op])
         end
     end
@@ -355,6 +360,7 @@ end
 
 
 function lower_op_to_mlir(op_name::Val{:(julia_mul)}, block::IR.Block, op::IR.Operation, replace_ops)
+    println("PROCESSING MUL")
     unroll_operation!(op, block, arith.muli, arith.mulf, replace_ops)
     unroll_operation_mat!(op, block, tosa.matmul, replace_ops)
 end
@@ -458,6 +464,25 @@ end
 
 function lower_op_to_mlir(op_name::Val{:(julia_cmp)}, block::IR.Block, op::IR.Operation, replace_ops)
     lower_cmp!(op, block, replace_ops)
+end
+
+function lower_op_to_mlir(op_name::Val{:(julia_not_int)}, block::IR.Block, op::IR.Operation, replace_ops)
+    operands = collect_operands(op)
+    types = IR.julia_type.((IR.type.(operands)))
+
+    ret = IR.type.(collect_results(op))[1]
+
+    bitmask = arith.constant(; value=typemax(UInt64) % IR.julia_type(ret), result=ret)
+    IR.insert_before!(block, op, bitmask)
+
+    println("got loc: $operands")
+    xori = arith.xori(operands[1], IR.result(bitmask))
+    IR.insert_before!(block, op, xori)
+
+    # reorder the input matrix based on the input dimensions
+
+    push!(replace_ops, [op, xori])
+
 end
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::IR.Operation, replace_ops)

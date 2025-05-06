@@ -77,6 +77,7 @@ function eval_mlir(f, args...; ctx = IR.context())
     # fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
     mod = code_mlir(f, arg_types; ctx=ctx)
+    println("Produced MLIR: $mod")
 
     GC.@preserve mod begin
         # println("Running GC")
