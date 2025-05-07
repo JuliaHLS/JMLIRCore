@@ -91,8 +91,7 @@ function eval_mlir(f, args...; ctx = IR.context())
         # lower to linalg
 
         println("canonicalize: $mod")
-        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named,tosa-to-linalg))" -o /tmp/temp.mlir`], ctx)
-        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named,tosa-to-linalg))" -o /tmp/temp.mlir`, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
         mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --canonicalize -o /tmp/temp_out.mlir`], ctx)
 
         mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)

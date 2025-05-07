@@ -257,4 +257,5 @@ end
    @test (@eval_mlir set_and_get_mat_float(2, 3, 2, 2, 5.0)) == (@eval set_and_get_mat_float(2, 3, 2, 2, 5.0))
    @test (@eval_mlir transpose_test()) == (@eval transpose_test())
    @test (@eval_mlir test_loops()) == (@eval test_loops())
+   @test (@eval_mlir augment_matrix()) == (@eval augment_matrix())
 end
