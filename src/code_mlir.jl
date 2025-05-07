@@ -124,7 +124,7 @@ function code_mlir(f, types; ctx = IR.context())
         println("GOT: $mod")
 
         ### Lower from julia dialect ###
-        run!(JuliaPasses.TensorToSSA(), mod, ctx)
+        run!(JuliaPasses.FixTensorSSA(), mod, ctx)
         run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
         run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
     end

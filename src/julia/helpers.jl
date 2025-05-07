@@ -1,6 +1,257 @@
 # helpers for lowering passes
 
 
+""" SSA Op Fix """
+module JuliaFixSSA
+using MLIR
+using MLIR.IR
+
+using MLIR.Dialects: bufferization
+import MLIR
+import MLIR.IR
+using MLIR.API
+
+
+
+function collect_operands(op::IR.Operation)::Vector{IR.Value}
+    operands::Vector{IR.Value} = []
+
+    for i in 1:IR.noperands(op)
+        push!(operands, IR.operand(op, i))
+    end
+
+    return operands 
+end
+
+function collect_results(op::IR.Operation)
+    results = []
+
+    for i ∈ 1:IR.nresults(op)
+        push!(results, IR.result(op, i))
+    end
+
+    return results
+end
+
+
+
+function check_name(op, target_name)::Bool
+    op_name = IR.name(op)
+    return length(op_name) >= length(target_name) && op_name[1:length(target_name)] == target_name
+end 
+
+function get_child_blocks!(visited::Set, curr::Block, targets::Vector{IR.Block})
+    if curr.block ∈ visited
+        return
+    end
+
+    push!(visited, curr.block)
+    push!(targets, curr)
+
+    for op in IR.OperationIterator(curr)
+        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
+            
+            for n_succ in 1:IR.nsuccessors(op)
+                target_block = IR.successor(op, n_succ)
+
+                if target_block ∉ visited
+                    get_child_blocks!(visited, target_block, targets)
+                end
+            end
+        end
+    end
+end
+
+get_ret(op::IR.Operation) = IR.type.(collect_results(op))[1]
+
+function return_block(block::Block)::Bool
+    for op in IR.OperationIterator(block)
+        if check_name(op, "func.return")
+            return true
+        end
+    end
+
+    return false
+end
+
+function fix_ssa_dominated_block!(original_op::Operation, block::Block)
+    # create memref type arg
+    memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
+
+    IR.push_argument!(block, memref_type_with_dims) 
+
+    new_ssa::IR.Value = IR.argument(block, IR.nargs(block))
+    new_op = original_op
+
+    # convert to tensor
+    if !return_block(block)
+        writable_cond = IR.UnitAttribute()
+        restrict_cond = IR.UnitAttribute()
+    else
+        writable_cond = nothing
+        writable_cond = IR.UnitAttribute()
+        restrict_cond = IR.UnitAttribute()
+    end
+
+    new_op = bufferization.to_tensor(new_ssa; result=get_ret(original_op), restrict = restrict_cond, writable=writable_cond)
+    
+    first = IR.first_op(block)
+    IR.insert_before!(block, first, new_op)
+
+    new_ssa = IR.result(new_op)
+
+    for op in IR.OperationIterator(block)
+        operands = collect_operands(op)
+
+        for (i, present_operand) in enumerate(operands)
+            if (present_operand) === IR.result(original_op) && !(check_name(op, "func.return"))
+                IR.operand!(op, i, new_ssa)
+
+                if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
+                    new_ssa = IR.result(op)
+                    new_op = op
+                end
+            elseif new_ssa == present_operand && !(check_name(op, "cf.br") || check_name(op, "cf.cond_br") ) # if SSA chain is found, progress
+
+                if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
+                    # convert back to a tensor
+                    convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
+                    IR.insert_before!(block, op, convert_to_memref_op)
+
+                    new_ssa = IR.result(convert_to_memref_op)
+                    new_op = convert_to_memref_op
+                end
+            end
+        end
+        
+        if check_name(op, "func.return")
+            operands = collect_operands(op)
+            @assert length(operands) == 1
+
+            if size(operands[1]) == size(new_ssa)
+                new_operands = [new_ssa]
+                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+            end
+        end
+
+        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
+            # fix the operands here to be in the right order
+            convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
+            IR.insert_before!(block, op, convert_to_memref_op)
+
+            new_ssa = IR.result(convert_to_memref_op)
+            new_op = convert_to_memref_op
+
+            if check_name(op, "cf.cond_br")
+                halfway_length = Int32((length(operands) - 1) / 2)
+                new_operands = [operands[1:(halfway_length+1)]...]
+                push!(new_operands,new_ssa)
+                push!(new_operands, operands[(halfway_length + 2):end]...)
+                push!(new_operands, new_ssa)
+
+                # new_operands = push!(operands, new_ssa)
+                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+
+                # fix attributes
+                at = IR.attr(op, "operandSegmentSizes")
+
+                cond = Int32(at[0])
+                first_args = Int32(at[1])
+                second_args = Int32(at[2])
+
+                first_args += 1
+                second_args += 1
+
+                new_at = IR.DenseArrayAttribute(Int32.([cond, first_args, second_args])::Vector{Int32})
+                # IR.rmattr!(op, "operandSegmentSizes")
+                IR.attr!(op, "operandSegmentSizes", new_at)
+            else
+                new_operands = push!(operands, new_ssa)
+                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+            end
+        end
+    end
+end
+
+function cond_br(
+    operands::Vector{Value};
+    trueDest::Block,
+    falseDest::Block,
+    location=Location(),
+)
+    _results = IR.Type[]
+    _operands = Value[operands...]
+    _owned_regions = Region[]
+    _successors = Block[trueDest, falseDest]
+    _attributes = IR.NamedAttribute[]
+    push!(
+        _attributes,
+        MLIR.Dialects.operandsegmentsizes([1, length(trueDestOperands), length(falseDestOperands)]),
+    )
+
+    return IR.create_operation(
+        "cf.cond_br",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
+function collect_dominating_blocks(func_op::IR.Operation)::Vector{Any}
+    # store dominating blocks
+    dominating_blocks::Vector{Any} = []
+
+    for region in IR.RegionIterator(func_op)
+        for block in IR.BlockIterator(region)
+            for op in IR.OperationIterator(block)
+                op_name = IR.name(op)
+
+                if length(op_name) >= 14 && op_name[1:14] == "julia.mat_inst"
+                    push!(dominating_blocks, [block, op])
+                end
+            end
+        end
+    end
+    
+    return dominating_blocks
+end
+
+function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
+    # collect branches
+    target_collection = []
+    for (dominator, dominating_op) in dominating_blocks 
+        visited = Set()
+        targets = Vector{IR.Block}()
+        get_child_blocks!(visited, dominator, targets)
+
+        push!(target_collection, targets)
+    end
+    
+    return target_collection
+end
+
+function fix_ssa_dominating_block!(dom_block, collection)
+    for op in IR.OperationIterator(collection[1])
+        operands = collect_operands(op)
+
+        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
+
+            shape = [size(get_ret(last(dom_block)))...]
+            memref_type_with_dims = IR.MemRefType(eltype(get_ret(last(dom_block))), shape, IR.Attribute(0))
+            buff_op = bufferization.to_memref(IR.result(last(dom_block)); memref=memref_type_with_dims)
+            IR.insert_before!(first(dom_block), op, buff_op)
+
+            new_operands = push!(operands, IR.result(buff_op))
+            API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+        end
+    end
+end
+
+end
 
 """ High-level Op lowering interface (External Use) """
 module JuliaLowerOp
