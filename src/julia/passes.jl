@@ -33,7 +33,7 @@ module JuliaPasses
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa, tensor, math, cf
+using MLIR.Dialects: arith, tosa, tensor, math, cf, bufferization
 
 include("helpers.jl")
 
@@ -103,7 +103,6 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                         continue
                     end
                     if op_name == "julia_mul"
-                        println("HERE")
                     end
 
                     op_sym = Symbol(op_name)
@@ -134,15 +133,12 @@ function get_child_blocks!(visited::Set, curr::Block, targets::Vector{IR.Block})
     push!(visited, curr.block)
     push!(targets, curr)
 
-    println("visited: $visited")
     for op in IR.OperationIterator(curr)
         # if cf.br type, traverse
         if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
-            println("processing op $op")
             
             for n_succ in 1:IR.nsuccessors(op)
                 target_block = IR.successor(op, n_succ)
-                println("found target_block $target_block")
 
                 if target_block ∉ visited
                     get_child_blocks!(visited, target_block, targets)
@@ -152,21 +148,48 @@ function get_child_blocks!(visited::Set, curr::Block, targets::Vector{IR.Block})
     end
 end
 
-get_ret(op) = IR.type.(JuliaLowerOp._JuliaPassHelpers.collect_results(op))[1]
+get_ret(op::IR.Operation) = IR.type.(JuliaLowerOp._JuliaPassHelpers.collect_results(op))[1]
+
+function return_block(block::Block)::Bool
+    for op in IR.OperationIterator(block)
+        if check_name(op, "func.return")
+            return true
+        end
+    end
+
+    return false
+end
 
 function fix_block!(original_op::Operation, block::Block)
     # fix function signature
-    println("NOW FIXING FOR: $original_op")
+    
+    # create memref type arg
+    memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
 
-    IR.push_argument!(block, get_ret(original_op)) 
+    IR.push_argument!(block, memref_type_with_dims) 
 
     new_ssa::IR.Value = IR.argument(block, IR.nargs(block))
-    println("TYPE TYPE: $new_ssa with type")
+    block_arg::IR.Value = IR.argument(block, IR.nargs(block))
     new_op = original_op
-    println("############################################")
-    println("starting with op: $new_op")
 
-    println("Processing: $block")
+    # convert to tensor
+
+    if !return_block(block)
+        writable_cond = IR.UnitAttribute()
+        restrict_cond = IR.UnitAttribute()
+    else
+        writable_cond = nothing
+        writable_cond = IR.UnitAttribute()
+        restrict_cond = IR.UnitAttribute()
+    end
+
+    new_op = bufferization.to_tensor(new_ssa; result=get_ret(original_op), restrict = restrict_cond, writable=writable_cond)
+    
+    first = IR.first_op(block)
+    IR.insert_before!(block, first, new_op)
+
+    new_ssa = IR.result(new_op)
+    println("new ssa has ret_type: $(get_ret(new_op))")
 
     for op in IR.OperationIterator(block)
         operands = JuliaLowerOp._JuliaPassHelpers.collect_operands(op)
@@ -175,7 +198,6 @@ function fix_block!(original_op::Operation, block::Block)
             if (present_operand) === IR.result(original_op) && !(check_name(op, "func.return"))
                 IR.operand!(op, i, new_ssa)
 
-                # println("s: $(size(get_ret(op)))")
                 # println("$new_op")
                 # println("s2: $(size(get_ret(new_op)))")
                 println("op: $(IR.julia_type(get_ret(op)) <: AbstractArray)")
@@ -192,15 +214,19 @@ function fix_block!(original_op::Operation, block::Block)
                     println("#########################: $new_ssa, $old_ssa")
                 end
             elseif new_ssa == present_operand && !(check_name(op, "cf.br") || check_name(op, "cf.cond_br") ) # if SSA chain is found, progress
-                println("op: $op")
+                # println("op: $op")
 
-                println("s: $(size(get_ret(op)))")
-                println("$new_op")
-                println("s2: $(size(get_ret(new_op)))")
+                println("s: $(IR.julia_type(get_ret(op)))")
+                # println("$new_op")
+                # println("s2: $(size(get_ret(new_op)))")
                 if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
+                    # convert back to a tensor
+                    convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
+                    IR.insert_before!(block, op, convert_to_memref_op)
+
                     old_ssa = new_ssa
-                    new_ssa = IR.result(op)
-                    new_op = op
+                    new_ssa = IR.result(convert_to_memref_op)
+                    new_op = convert_to_memref_op
                     println("#########################: $new_ssa, $old_ssa")
                 end
             end
@@ -223,14 +249,17 @@ function fix_block!(original_op::Operation, block::Block)
         if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
             # states= API.h
             # API.mlirOperationStateAddOperands(state, length(operands), operands)
-            println("PROCESSING WITH OPERANDS: $operands for $op with new ssa : $new_ssa")
             
             # fix the operands here to be in the right order
+            convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
+            IR.insert_before!(block, op, convert_to_memref_op)
+
+            new_ssa = IR.result(convert_to_memref_op)
+            new_op = convert_to_memref_op
 
 
             if check_name(op, "cf.cond_br")
 
-                println("Got ssa: $new_ssa")
 
                 halfway_length = Int32((length(operands) - 1) / 2)
                 new_operands = [operands[1:(halfway_length+1)]...]
@@ -238,7 +267,6 @@ function fix_block!(original_op::Operation, block::Block)
                 push!(new_operands, operands[(halfway_length + 2):end]...)
                 push!(new_operands, new_ssa)
 
-                println("working: $new_operands")
 
                 # new_operands = push!(operands, new_ssa)
                 API.mlirOperationSetOperands(op, length(new_operands), new_operands)
@@ -276,15 +304,6 @@ function fix_block!(original_op::Operation, block::Block)
         end
     end
 
-    println("now block is: $block")
-
-    println("got terminator op: $new_ssa")
-
-
-
-    # todo: find the last SUCCESSOR of the IR operation in the block
-
-    # modify return op to add the new op
 end
 
 using MLIR
@@ -335,10 +354,6 @@ function postfix_block!(original_op::Operation, block::Block)
             for n_succ in 1:IR.nsuccessors(op)
                 push!(succ, IR.successor(op, n_succ))
             end
-
-            println("Got operands: $operands and results $succ")
-            # API.mlirOperationStateAddOperands(state, length(operands), operands)
-            println("PROCESSING WITH OPERANDS: $operands for $op")
 
             if check_name(op, "cf.br")
                 new_op = cf.br(operands, dest=succ[1])
@@ -402,13 +417,17 @@ function IR.pass_run(::TensorToSSA, func_op)
     # correct branch
     for (dom_block, collection) in zip(dominating_blocks, target_collection)
         # println("First: $((collection)[2:end])")
-        println("HERHEHEHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH: $(last(dom_block))")
         for op in IR.OperationIterator(collection[1])
             operands = JuliaLowerOp._JuliaPassHelpers.collect_operands(op)
 
             if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
-                println("PROCESSING WITH OPERANDS: $operands for $(last(dom_block))")
-                new_operands = push!(operands, IR.result(last(dom_block)))
+
+                shape = [size(get_ret(last(dom_block)))...]
+                memref_type_with_dims = IR.MemRefType(eltype(get_ret(last(dom_block))), shape, IR.Attribute(0))
+                buff_op = bufferization.to_memref(IR.result(last(dom_block)); memref=memref_type_with_dims)
+                IR.insert_before!(first(dom_block), op, buff_op)
+
+                new_operands = push!(operands, IR.result(buff_op))
                 API.mlirOperationSetOperands(op, length(new_operands), new_operands)
             end
         end

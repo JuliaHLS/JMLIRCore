@@ -570,7 +570,13 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
     ret = IR.type.(collect_results(op))[1]
 
     # create transpose op
+    println("OPERANDS: $(operands[1])")
+    # if IR.istensor(operands[1])
+    #     # ADD THE EXTRACT SLICE HERE
+    #     error("extract_slice not supported")
+    # else
     new_op = tensor.extract(operands[1], _JuliaPassHelpers.transform_indices(block, op, indices); result=ret)
+    # end
 
     # insert into the program
     IR.insert_after!(block, op, new_op)
