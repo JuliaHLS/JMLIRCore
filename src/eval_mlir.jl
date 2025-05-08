@@ -19,7 +19,7 @@ macro eval_mlir(call)
 end
 
 # externally lower TOSA to linalg (unsupported by MLIR.jl)
-function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
+function external_lowering_mlir_opt!(op, passes::Vector{Cmd} , ctx)
     # extract str
     mlir_buffer = IOBuffer()
     print(mlir_buffer, op)
@@ -31,7 +31,9 @@ function external_lowering_mlir_opt!(op, passes::Cmd , ctx)
     end
 
     # lower
-    run(passes)
+    for pass in passes
+        run(pass)
+    end
 
     # read from file back into the pipeline
     ir = read("/tmp/temp_out.mlir", String)
@@ -77,25 +79,18 @@ function eval_mlir(f, args...; ctx = IR.context())
     # fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
     mod = code_mlir(f, arg_types; ctx=ctx)
-    println("Produced IR Code: $mod")
 
     GC.@preserve mod begin
-        # println("Running GC")
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named,tosa-to-linalg))" -o /tmp/temp.mlir`, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --canonicalize -o /tmp/temp_out.mlir`], ctx)
 
-        # GC.gc()
-        # println("Ran GC")
-        # ctx = IR.Context(op)
-
-        # lower to linalg
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named, tosa-to-linalg))" -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx)
-
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-linalg-to-affine-loops -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --lower-affine -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --expand-strided-metadata -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-scf-to-cf -o /tmp/temp_out.mlir`, ctx)
-        mod = external_lowering_mlir_opt!(mod, `mlir-opt /tmp/temp.mlir --convert-to-llvm -o /tmp/temp_out.mlir`, ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --convert-linalg-to-affine-loops -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --lower-affine -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --expand-strided-metadata -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --convert-scf-to-cf -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --convert-math-to-funcs -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --convert-to-llvm -o /tmp/temp_out.mlir`], ctx)
 
         # initialise PassManager
         pm::IR.PassManager = IR.PassManager()

@@ -1,4 +1,3 @@
-using JMLIRCore
 using Test
 using StaticArrays
 
@@ -7,7 +6,35 @@ add_test(a, b) = a + b
 sub_test(a, b) = a - b
 mul_test(a, b) = a * b
 div_test(a, b) = a / b
+pow_test(a, b) = a ^ b
 rem(A, B) = A % B
+
+
+function test_loops()
+   sum = 0
+   for i in 1:3
+       for j in 1:3
+           sum += i + j
+           sum += (i == j ? 1 : 0)
+       end
+   end
+
+   return sum
+end
+
+function augment_matrix()
+    A = @MMatrix [5.2 1.8 3.6;
+                  -1.0 100.0 2.0;
+                  2.0 2.0 2.0]
+
+    Aug = @MMatrix [0.0 0.0 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0]
+    for i in 1:3, j in 1:3
+        Aug[i, j] = A[i, j]
+        Aug[i, j+3] = (i == j ? 1.0 : 0.0)
+    end
+
+    return Aug
+end
 
 function create_mat()
     return @MMatrix [1 2 3 4 5; 6 7 8 9 0]
@@ -152,6 +179,12 @@ end
    @test (@eval_mlir rem(5, 10)) == (@eval rem(5, 10))
    @test (@eval_mlir rem(UInt(5), UInt(10))) == (@eval rem(UInt(5), UInt(10)))
 
+   # #### POW ####
+   @test (@eval_mlir pow_test(5, 10)) == (@eval pow_test(5, 10))
+   @test (@eval_mlir pow_test(UInt(5), UInt(10))) == (@eval pow_test(UInt(5), UInt(10)))
+
+
+
    ### CONTROL FLOW ###
    @test (@eval_mlir multi_route_node(5, 10)) == (@eval multi_route_node(5, 10)) 
    @test (@eval_mlir multi_route_node(10, 5)) == (@eval multi_route_node(10, 5)) 
@@ -196,6 +229,10 @@ end
    # #### REM ####
    @test (@eval_mlir rem(5.0, 10.0)) == (@eval rem(5.0, 10.0))
 
+   # #### POW ####
+   @test (@eval_mlir pow_test(5.0, 10)) == (@eval pow_test(5.0, 10))
+   # @test (@eval_mlir pow_test(5.0, -10)) == (@eval pow_test(5.0, -10))
+
    ### CONTROL FLOW ###
    # @test (@eval_mlir multi_route_node(5.0, 10.0)) == (@eval multi_route_node(5.0, 10.0)) 
    # @test (@eval_mlir multi_route_node(10.5, 5.2)) == (@eval multi_route_node(10.5, 5.2)) 
@@ -218,4 +255,6 @@ end
    @test (@eval_mlir modify_mat_float(2, 3, 5.0)) == (@eval modify_mat_float(2, 3, 5.0))
    @test (@eval_mlir set_and_get_mat_float(2, 3, 2, 2, 5.0)) == (@eval set_and_get_mat_float(2, 3, 2, 2, 5.0))
    @test (@eval_mlir transpose_test()) == (@eval transpose_test())
+   @test (@eval_mlir test_loops()) == (@eval test_loops())
+   @test (@eval_mlir augment_matrix()) == (@eval augment_matrix())
 end

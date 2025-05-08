@@ -33,7 +33,7 @@ module JuliaPasses
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa, tensor
+using MLIR.Dialects: arith, tosa, tensor, math, cf, bufferization
 
 include("helpers.jl")
 
@@ -83,11 +83,10 @@ function IR.pass_run(::LowerJuliaMat, func_op)
     rewrite_references(replace_ops)  
 end
 
+
 struct LowerJuliaArith <: IR.AbstractPass end
 
 IR.opname(::LowerJuliaArith) = "func.func"
-
-
 
 function IR.pass_run(::LowerJuliaArith, func_op)
     println("Running LowerJuliaArith")
@@ -103,6 +102,8 @@ function IR.pass_run(::LowerJuliaArith, func_op)
                     if length(op_name) >= 9 && op_name[6:9] == "mat"
                         continue
                     end
+                    if op_name == "julia_mul"
+                    end
 
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
@@ -113,5 +114,30 @@ function IR.pass_run(::LowerJuliaArith, func_op)
 
     rewrite_references(replace_ops)
 end
+
+
+struct FixTensorSSA <: IR.AbstractPass end
+
+IR.opname(::FixTensorSSA) = "func.func"
+
+function IR.pass_run(::FixTensorSSA, func_op)
+    println("Running FixTensorSSA")
+    
+    dominating_blocks = JuliaFixSSA.collect_dominating_blocks(func_op)
+
+    target_collection = JuliaFixSSA.collect_dominated_branches(dominating_blocks)
+    
+    # fix SSA on dominated branch
+    for (dom_block, collection) in zip(dominating_blocks, target_collection)
+        # fix SSA for the entry block
+        JuliaFixSSA.fix_ssa_dominating_block!(dom_block, collection)
+        
+        # fix SSA for the dominated blocks
+        for target_block in collection[2:end]
+            JuliaFixSSA.fix_ssa_dominated_block!(last(dom_block), target_block)
+        end
+    end
+end
+
 
 end

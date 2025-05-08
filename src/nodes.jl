@@ -28,6 +28,8 @@ function postfix_nodes(context, blocks)
 
       # expand values
       values = get_value.(values, context, blocks)
+      println("PROCESSING VALS: $values")
+      println("PROCESSING DEST: $destination")
 
       # insert the conditional break with the expected parameters
       cond_br = cf.br(

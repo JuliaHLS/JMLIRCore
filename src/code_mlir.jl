@@ -35,7 +35,7 @@ function code_mlir(f, types; ctx = IR.context())
     # end
 
     # load dialects
-    for dialect in (:func, :cf, :memref, :linalg, :tensor)
+    for dialect in (:func, :cf, :memref, :linalg, :tensor, :math)
         IR.register_dialect!(IR.DialectHandle(dialect); context=ctx)
     end
 
@@ -51,7 +51,7 @@ function code_mlir(f, types; ctx = IR.context())
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
 
-    println("Got ir: $ir")
+    println("Got ir: $ir with ret $ret")
 
     result_types = [IR.Type(ret)]
 
@@ -121,7 +121,10 @@ function code_mlir(f, types; ctx = IR.context())
         body = IR.body(mod)
         push!(body, op)
 
+        println("GOT: $mod")
+
         ### Lower from julia dialect ###
+        run!(JuliaPasses.FixTensorSSA(), mod, ctx)
         run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
         run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
     end
