@@ -81,19 +81,7 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block)
     IR.push_argument!(block, memref_type_with_dims) 
 
     new_ssa::IR.Value = IR.argument(block, IR.nargs(block))
-    new_op = original_op
-
-    # convert to tensor
-    if !return_block(block)
-        writable_cond = IR.UnitAttribute()
-        restrict_cond = IR.UnitAttribute()
-    else
-        writable_cond = nothing
-        writable_cond = IR.UnitAttribute()
-        restrict_cond = IR.UnitAttribute()
-    end
-
-    new_op = bufferization.to_tensor(new_ssa; result=get_ret(original_op), restrict = restrict_cond, writable=writable_cond)
+    new_op = bufferization.to_tensor(new_ssa; result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
     
     first = IR.first_op(block)
     IR.insert_before!(block, first, new_op)
@@ -821,7 +809,6 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
     ret = IR.type.(collect_results(op))[1]
 
     # create transpose op
-    println("OPERANDS: $(operands[1])")
     # if IR.istensor(operands[1])
     #     # ADD THE EXTRACT SLICE HERE
     #     error("extract_slice not supported")

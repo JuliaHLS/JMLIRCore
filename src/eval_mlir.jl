@@ -79,18 +79,8 @@ function eval_mlir(f, args...; ctx = IR.context())
     # fptr = IR.context!(IR.Context()) do
         # get top-level mlir function call (MLIR.IR.Operation)
     mod = code_mlir(f, arg_types; ctx=ctx)
-    println("Produced MLIR: $mod")
 
     GC.@preserve mod begin
-        # println("Running GC")
-
-        # GC.gc()
-        # println("Ran GC")
-        # ctx = IR.Context(op)
-
-        # lower to linalg
-
-        println("canonicalize: $mod")
         mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named,tosa-to-linalg))" -o /tmp/temp.mlir`, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
         mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --canonicalize -o /tmp/temp_out.mlir`], ctx)
 

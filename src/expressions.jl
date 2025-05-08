@@ -22,10 +22,8 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         fop! = intrinsic_to_mlir(called_func)
 
         # filter out unwanted arguments
-        println("args: $(inst.args)")
         extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
 
-        println("args: $extracted_args")
         args = get_value.(extracted_args, context, blocks)
 
         # TODO: investigate the feasibility of reintroducing location in Julia v1.12
@@ -37,7 +35,6 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         # Skip
     elseif Meta.isexpr(inst, :new)
         val_type = context.stmt[:type]
-        println("Processing expr: $inst")
 
         # TODO: tidy once I know what types i want here
         if !(val_type <: ScalarTypes || val_type <: LinearAlgebra.Adjoint)
@@ -47,10 +44,8 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
         # extract metadata
         fop! = intrinsic_to_mlir(inst)
 
-        println("got args: $(inst.args[(begin+1):end])")
         extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef), inst.args[(begin+1):end])
 
-        println("$extracted_args typeof $(typeof(extracted_args))")
         args = get_value.(extracted_args, context, blocks)
 
         # perform transpose
