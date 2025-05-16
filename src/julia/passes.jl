@@ -130,11 +130,12 @@ function IR.pass_run(::FixTensorSSA, func_op)
     # fix SSA on dominated branch
     for (dom_block, collection) in zip(dominating_blocks, target_collection)
         # fix SSA for the entry block
-        JuliaFixSSA.fix_ssa_dominating_block!(dom_block, collection)
-        
-        # fix SSA for the dominated blocks
-        for target_block in collection[2:end]
-            JuliaFixSSA.fix_ssa_dominated_block!(last(dom_block), target_block)
+        new_ssa = JuliaFixSSA.fix_ssa_dominating_block!(dom_block, collection)
+        if new_ssa != nothing
+            # fix SSA for the dominated blocks
+            for target_block in collection[2:end]
+                JuliaFixSSA.fix_ssa_dominated_block!(last(dom_block), target_block, new_ssa)
+            end
         end
     end
 end

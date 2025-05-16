@@ -74,19 +74,19 @@ function return_block(block::Block)::Bool
     return false
 end
 
-function fix_ssa_dominated_block!(original_op::Operation, block::Block)
+function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa::Operation)
     # create memref type arg
+
+
     memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
 
-    IR.push_argument!(block, memref_type_with_dims) 
-
-    new_ssa::IR.Value = IR.argument(block, IR.nargs(block))
-    new_op = bufferization.to_tensor(new_ssa; result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
+    new_op = bufferization.to_tensor(IR.result(new_ssa); result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
     
     first = IR.first_op(block)
     IR.insert_before!(block, first, new_op)
 
     new_ssa = IR.result(new_op)
+
 
     for op in IR.OperationIterator(block)
         operands = collect_operands(op)
@@ -121,72 +121,7 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block)
                 API.mlirOperationSetOperands(op, length(new_operands), new_operands)
             end
         end
-
-        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
-            # fix the operands here to be in the right order
-            convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
-            IR.insert_before!(block, op, convert_to_memref_op)
-
-            new_ssa = IR.result(convert_to_memref_op)
-            new_op = convert_to_memref_op
-
-            if check_name(op, "cf.cond_br")
-                halfway_length = Int32((length(operands) - 1) / 2)
-                new_operands = [operands[1:(halfway_length+1)]...]
-                push!(new_operands,new_ssa)
-                push!(new_operands, operands[(halfway_length + 2):end]...)
-                push!(new_operands, new_ssa)
-
-                # new_operands = push!(operands, new_ssa)
-                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
-
-                # fix attributes
-                at = IR.attr(op, "operandSegmentSizes")
-
-                cond = Int32(at[0])
-                first_args = Int32(at[1])
-                second_args = Int32(at[2])
-
-                first_args += 1
-                second_args += 1
-
-                new_at = IR.DenseArrayAttribute(Int32.([cond, first_args, second_args])::Vector{Int32})
-                # IR.rmattr!(op, "operandSegmentSizes")
-                IR.attr!(op, "operandSegmentSizes", new_at)
-            else
-                new_operands = push!(operands, new_ssa)
-                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
-            end
-        end
     end
-end
-
-function cond_br(
-    operands::Vector{Value};
-    trueDest::Block,
-    falseDest::Block,
-    location=Location(),
-)
-    _results = IR.Type[]
-    _operands = Value[operands...]
-    _owned_regions = Region[]
-    _successors = Block[trueDest, falseDest]
-    _attributes = IR.NamedAttribute[]
-    push!(
-        _attributes,
-        MLIR.Dialects.operandsegmentsizes([1, length(trueDestOperands), length(falseDestOperands)]),
-    )
-
-    return IR.create_operation(
-        "cf.cond_br",
-        location;
-        operands=_operands,
-        owned_regions=_owned_regions,
-        successors=_successors,
-        attributes=_attributes,
-        results=_results,
-        result_inference=false,
-    )
 end
 
 function collect_dominating_blocks(func_op::IR.Operation)::Vector{Any}
@@ -211,7 +146,7 @@ end
 function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
     # collect branches
     target_collection = []
-    for (dominator, dominating_op) in dominating_blocks 
+    for (dominator, _) in dominating_blocks 
         visited = Set()
         targets = Vector{IR.Block}()
         get_child_blocks!(visited, dominator, targets)
@@ -222,19 +157,15 @@ function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
     return target_collection
 end
 
-function fix_ssa_dominating_block!(dom_block, collection)
+function fix_ssa_dominating_block!(dom_block, collection)::Union{IR.Operation, Nothing}
     for op in IR.OperationIterator(collection[1])
-        operands = collect_operands(op)
-
         if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
-
             shape = [size(get_ret(last(dom_block)))...]
             memref_type_with_dims = IR.MemRefType(eltype(get_ret(last(dom_block))), shape, IR.Attribute(0))
             buff_op = bufferization.to_memref(IR.result(last(dom_block)); memref=memref_type_with_dims)
             IR.insert_before!(first(dom_block), op, buff_op)
 
-            new_operands = push!(operands, IR.result(buff_op))
-            API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+            return buff_op
         end
     end
 end

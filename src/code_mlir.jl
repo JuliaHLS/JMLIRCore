@@ -127,6 +127,24 @@ function code_mlir(f, types; ctx = IR.context())
         run!(JuliaPasses.FixTensorSSA(), mod, ctx)
         run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
         run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
+
+        ### standard optimisation passes
+        MLIR.API.mlirRegisterAllPasses()
+        pm = IR.PassManager()
+        opm = IR.OpPassManager(pm)
+
+        IR.add_pipeline!(opm,
+                         "canonicalize{region-simplify=disabled},\
+                         cse,\
+                         loop-invariant-code-motion,\
+                         sroa,\
+                         sccp,\
+                         remove-dead-values,\
+                         symbol-dce,\
+                         fold-memref-alias-ops,\
+                         control-flow-sink"
+                        )
+        # IR
     end
 
     ### return result ###
