@@ -80,7 +80,7 @@ end
 
 function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
     # collect arguments for the false route
-    false_args::Vector{Value} = get_value_ir.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
+    false_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
 
     # collect condition IR val
     cond = get_value(inst.cond, context, blocks)
@@ -89,7 +89,7 @@ function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
     # collect second destination
     other_dest = only(setdiff(blocks.bb.succs, inst.dest))
 
-    true_args::Vector{Value} = get_value_ir.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
+    true_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
 
     other_dest = blocks.blocks[other_dest]
     dest = blocks.blocks[inst.dest]

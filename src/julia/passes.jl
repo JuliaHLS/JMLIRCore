@@ -72,10 +72,9 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                 op_name = replace(name(op), "." => "_")
 
                 # if op is in the julia dialect
-                if length(op_name) >= 9 && op_name[1:9] == "julia_mat"
+                if JuliaFixSSA.check_name(op, "julia_mat")
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
-                    println("new_mod: $func_op")
                 end
             end
         end
@@ -98,12 +97,10 @@ function IR.pass_run(::LowerJuliaArith, func_op)
             for op in IR.OperationIterator(block)
                 op_name = replace(name(op), "." => "_")
 
-                # if op is in the julia dialect
-                if length(op_name) >= 5 && op_name[1:5] == "julia"
-                    if length(op_name) >= 9 && op_name[6:9] == "mat"
+                if JuliaFixSSA.check_name(op, "julia")
+                    # if op is in the julia dialect
+                    if JuliaFixSSA.check_name(op, "julia_mat")
                         continue
-                    end
-                    if op_name == "julia_mul"
                     end
 
                     op_sym = Symbol(op_name)
@@ -131,7 +128,12 @@ function IR.pass_run(::FixTensorSSA, func_op)
     # fix SSA on dominated branch
     for (dom_block, collection) in zip(dominating_blocks, target_collection)
         # fix SSA for the entry block
-        new_ssa = JuliaFixSSA.fix_ssa_dominating_block!(dom_block, collection)
+
+        new_ssa = JuliaFixSSA.fix_ssa_dominating_block!(last(dom_block), first(dom_block))
+
+        # skip blocks with a single dominating block
+        length(collection[2:end]) > 0 || continue
+
         if new_ssa != nothing
             # fix SSA for the dominated blocks
             for target_block in collection[2:end]

@@ -62,7 +62,11 @@ function get_child_blocks!(visited::Set, curr::Block, targets::Vector{IR.Block})
     end
 end
 
-get_ret(op::IR.Operation) = IR.type.(collect_results(op))[1]
+function get_ret(op::IR.Operation) 
+    res = IR.type.(collect_results(op))
+
+    return length(res) == 0 ? nothing : res[1]
+end
 
 function return_block(block::Block)::Bool
     for op in IR.OperationIterator(block)
@@ -72,6 +76,49 @@ function return_block(block::Block)::Bool
     end
 
     return false
+end
+
+function fix_ssa_refs!(block, op, original_op, new_op, new_ssa)
+    # println("has new ssa: $new_ssa")
+    operands = collect_operands(op)
+    for (i, present_operand) in enumerate(operands)
+        if present_operand === IR.result(original_op)
+            # do not fix ops that do not return anything
+            !isnothing(get_ret(op)) || continue
+            IR.operand!(op, i, new_ssa)
+
+            if (IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(original_op)) == size(get_ret(new_op)))
+                new_ssa = IR.result(op)
+                new_op = op
+
+            elseif new_ssa == present_operand && !(check_name(op, "cf.br") || check_name(op, "cf.cond_br") ) # if SSA chain is found, progress
+
+                if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
+                    # convert back to a tensor
+                    convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
+                    IR.insert_before!(block, op, convert_to_memref_op)
+
+                    new_ssa = IR.result(convert_to_memref_op)
+                    new_op = convert_to_memref_op
+                end
+            end
+        end
+    end
+
+    op = IR.terminator(block)
+    if !isnothing(op) && check_name(op, "func.return")
+        operands = collect_operands(op)
+        @assert length(operands) == 1
+
+        println("processing $op")
+
+        if IR.julia_type(IR.type(operands[1])) <: AbstractArray && size(operands[1]) == size(new_ssa)
+            new_operands = [new_ssa]
+            API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+        end
+    end
+
+    return new_op, new_ssa
 end
 
 function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa::Operation)
@@ -88,36 +135,7 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
     for op in IR.OperationIterator(block)
         operands = collect_operands(op)
 
-        for (i, present_operand) in enumerate(operands)
-            if present_operand === IR.result(original_op) && !(check_name(op, "func.return"))
-                IR.operand!(op, i, new_ssa)
-
-                if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
-                    new_ssa = IR.result(op)
-                    new_op = op
-                end
-            elseif new_ssa == present_operand && !(check_name(op, "cf.br") || check_name(op, "cf.cond_br") ) # if SSA chain is found, progress
-
-                if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
-                    # convert back to a tensor
-                    convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
-                    IR.insert_before!(block, op, convert_to_memref_op)
-
-                    new_ssa = IR.result(convert_to_memref_op)
-                    new_op = convert_to_memref_op
-                end
-            end
-        end
-        
-        if check_name(op, "func.return")
-            operands = collect_operands(op)
-            @assert length(operands) == 1
-
-            if size(operands[1]) == size(new_ssa)
-                new_operands = [new_ssa]
-                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
-            end
-        end
+        new_op, new_ssa = fix_ssa_refs!(block, op, original_op, new_op, new_ssa) 
     end
 end
 
@@ -218,15 +236,18 @@ function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
 end
 
 
-function fix_ssa_dominating_block!(dom_block, collection)::IR.Operation
-    for op in IR.OperationIterator(collection[1])
-        # operands = collect_operands(op)
-        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
+function fix_ssa_dominating_block!(func_op::IR.Operation, dom_block::IR.Block)::Union{IR.Operation, Nothing}
+    new_op = func_op
+    new_ssa = IR.result(new_op)
 
-            shape = [size(get_ret(last(dom_block)))...]
-            memref_type_with_dims = IR.MemRefType(eltype(get_ret(last(dom_block))), shape, IR.Attribute(0))
-            buff_op = bufferization.to_memref(IR.result(last(dom_block)); memref=memref_type_with_dims)
-            IR.insert_before!(first(dom_block), op, buff_op)
+    for op in IR.OperationIterator(dom_block)
+        new_op, new_ssa = fix_ssa_refs!(dom_block, op, func_op, new_op, new_ssa)
+
+        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
+            shape = [size(get_ret((func_op)))...]
+            memref_type_with_dims = IR.MemRefType(eltype(get_ret(func_op)), shape, IR.Attribute(0))
+            buff_op = bufferization.to_memref(IR.result(func_op); memref=memref_type_with_dims)
+            IR.insert_before!(dom_block, op, buff_op)
 
             return buff_op
         end
@@ -452,6 +473,31 @@ module _JuliaPassHelpers
         replaced = false
 
         println("processing: $op with ret type: $types")
+
+        # edge-case where only one argument is given, there exists an implicit zero
+        if length(operands[2:end]) == 0
+            println("FOUND NO EXTRA ARGUMENTS")
+            # take advantage of MLIR's strong typing
+            zero_op = arith.constant(;value=0, result=IR.Type(types[1]))
+            IR.insert_before!(block, op, zero_op)
+            zero_op_ref = IR.result(zero_op)
+
+            if types[1] <: Integer
+                new_op = fn_int(zero_op_ref, prev_val; result=ret)
+                IR.insert_after!(block, prev_op, new_op)
+
+                prev_op = new_op
+                replaced = true
+            elseif types[1] <: AbstractFloat
+                new_op = fn_float(zero_op_ref, prev_val; result=ret)
+                IR.insert_after!(block, prev_op, new_op)
+
+                prev_op = new_op
+                replaced = true
+            else
+                println("GOT TYPES: $types")
+            end
+        end
 
         for new_ref in operands[2:end]
             if types[1] <: Integer && types[2] <: Integer
