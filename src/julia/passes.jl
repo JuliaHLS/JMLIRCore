@@ -81,7 +81,6 @@ function IR.pass_run(::LowerJuliaMat, func_op)
         end
     end
 
-    println("DONE")
     rewrite_references(replace_ops)  
 end
 
@@ -149,39 +148,11 @@ IR.opname(::FixImplicitControlFlow) = "func.func"
 function IR.pass_run(::FixImplicitControlFlow, func_op)
     println("Running FixImplicitControlFlow")
     
+    # collect implicit blocks
     implicit_blocks = JuliaFixSSA.collect_implicit_blocks(func_op)
-    println("GOT: $implicit_blocks")
+
+    # fix implicit blocks
     JuliaFixSSA.fix_implicit_blocks!(implicit_blocks)
-    # fix SSA on dominated branch
 end
-
-
-struct FixCondBrDominationSemantics<: IR.AbstractPass end
-
-IR.opname(::FixCondBrDominationSemantics) = "func.func"
-
-function IR.pass_run(::FixCondBrDominationSemantics, func_op)
-    println("Running FixCondBrDominationSemantics")
-
-    dominating_blocks = JuliaFixSSA.collect_dominating_cond_blocks(func_op)
-    target_collection = JuliaFixSSA.collect_dominated_cond_branches(dominating_blocks)
-
-    println("Got dominating blocks: $dominating_blocks")
-
-    # fix SSA on dominated branch
-    for (dom_block, collection) in zip(dominating_blocks, target_collection)
-        # fix SSA for the entry block
-        args = JuliaFixSSA.fix_cond_dominating_block!(dom_block)
-        # if new_ssa != nothing
-        #     # fix SSA for the dominated blocks
-            for target_block in collection[2:end]
-                JuliaFixSSA.fix_cond_dominated_block!(target_block, args)
-            end
-        # end
-    end
-
-end
-
-
 
 end

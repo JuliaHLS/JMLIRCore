@@ -51,8 +51,6 @@ function code_mlir(f, types; ctx = IR.context())
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
 
-    println("Got ir: $ir with ret $ret")
-
     result_types = [IR.Type(ret)]
 
     # values
@@ -121,17 +119,13 @@ function code_mlir(f, types; ctx = IR.context())
         body = IR.body(mod)
         push!(body, op)
 
-        println("GOT: $mod")
+        println("Code gen produced the following MLIR: $mod")
 
         ### Lower from julia dialect ###
         run!(JuliaPasses.FixTensorSSA(), mod, ctx)
-        # run!(JuliaPasses.FixCondBrDominationSemantics(), mod, ctx)
-        println("GOT MOD: $mod")
         run!(JuliaPasses.FixImplicitControlFlow(), mod, ctx)
         run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
         run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
-
-        println("produced mod: $mod")
 
         ### standard optimisation passes
         MLIR.API.mlirRegisterAllPasses()
@@ -149,7 +143,8 @@ function code_mlir(f, types; ctx = IR.context())
                          fold-memref-alias-ops,\
                          control-flow-sink"
                         )
-        # IR
+        
+        println("Lowered and optimised MLIR: $mod")
     end
 
     ### return result ###
