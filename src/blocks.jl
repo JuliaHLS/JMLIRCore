@@ -12,7 +12,6 @@ function prepare_block(ir, bb)
     inst isa Core.PhiNode || continue
 
     type = stmt[:type]
-
     IR.push_argument!(b, IR.Type(type))
   end
 
@@ -27,19 +26,19 @@ function collect_value_arguments(ir, from, to)
   for s in to.stmts
     stmt = ir.stmts[s]
     inst = stmt[:inst]
-    inst isa Core.PhiNode || continue
 
-    edge = findfirst(==(from), inst.edges)
-    if isnothing(edge) # use dummy scalar val instead
-      val = zero(stmt[:type])
-      push!(values, val)
-    else
-      push!(values, inst.values[edge])
+    if inst isa Core.PhiNode
+        edge = findfirst(==(from), inst.edges)
+        if isnothing(edge) # use dummy scalar val instead
+          val = zero(stmt[:type])
+          push!(values, val)
+        else
+          push!(values, inst.values[edge])
+        end
     end
   end
   return values
 end
-
 
 # get value
 function get_value(x, context::Context, blocks::Blocks)
@@ -61,7 +60,6 @@ function get_value(x, context::Context, blocks::Blocks)
         error("could not use value $x of type $(typeof(x)) inside MLIR. Please review ScalarTypes.")
     end
 end
-
 
 
 function preprocess_code_blocks(ir, types)

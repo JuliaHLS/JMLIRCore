@@ -28,8 +28,6 @@ function postfix_nodes(context, blocks)
 
       # expand values
       values = get_value.(values, context, blocks)
-      println("PROCESSING VALS: $values")
-      println("PROCESSING DEST: $destination")
 
       # insert the conditional break with the expected parameters
       cond_br = cf.br(
@@ -50,63 +48,75 @@ end
 
 # process PhiNode
 function process_node(inst::PhiNode, context::Context, blocks::Blocks)
-  
-  # collect phi node metadata
-  for (source_block_idx, value) in zip(inst.edges, inst.values)
-    mapped_ref = get!(context.phi_nodes_metadata, source_block_idx, [])
-    push!(mapped_ref, value)
-  end
+    # collect phi node metadata
+    for (source_block_idx, value) in zip(inst.edges, inst.values)
+        mapped_ref = get!(context.phi_nodes_metadata, source_block_idx, [])
+        push!(mapped_ref, value)
+    end
 
-
-  context.values[context.sidx] = IR.argument(blocks.current_block, context.n_phi_nodes += 1)
+    context.values[context.sidx] = IR.argument(blocks.current_block, context.n_phi_nodes += 1)
 end
 
 
 
 # process PiNode
 function process_node(inst::PiNode, context::Context, blocks::Blocks)
-  context.values[context.sidx] = get_value(inst.val, context, blocks)
+    context.values[context.sidx] = get_value(inst.val, context, blocks)
 end
-
 
 
 function process_node(inst::GotoNode, context::Context, blocks::Blocks)
-  args = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.label), context, blocks)
-  dest = blocks.blocks[inst.label]
-  location = Location()#Location(string(context.line.file), context.line.line, 0)
-  push!(blocks.current_block, cf.br(args; dest, location))
+    # collect arguments
+    args::Vector{IR.Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.label), context, blocks)
+
+    # collect destination block (MLIR)
+    dest = blocks.blocks[inst.label]
+
+    location = Location()#Location(string(context.line.file), context.line.line, 0)
+
+    # add unconditional break (goto)
+    push!(blocks.current_block, cf.br(args; dest, location))
 end
 
-
 function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
-  false_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
-  cond = get_value(inst.cond, context, blocks)
-  @assert length(blocks.bb.succs) == 2 # NOTE: We assume that length(bb.succs) == 2, this might be wrong
-  other_dest = only(setdiff(blocks.bb.succs, inst.dest))
-  true_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
-  other_dest = blocks.blocks[other_dest]
-  dest = blocks.blocks[inst.dest]
+    # collect arguments for the false route
+    false_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
 
-  location = Location() #string(context.line.file), context.line.line, 0)
+    # collect condition IR val
+    cond = get_value(inst.cond, context, blocks)
+    @assert length(blocks.bb.succs) == 2 # NOTE: We assume that length(bb.succs) == 2, this might be wrong
 
-  cond_br = cf.cond_br(
-    cond,
-    true_args,
-    false_args;
-    trueDest=other_dest,
-    falseDest=dest,
-    location,
-  )
-  push!(blocks.current_block, cond_br)
+    # collect second destination
+    other_dest = only(setdiff(blocks.bb.succs, inst.dest))
+
+    true_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
+
+    other_dest = blocks.blocks[other_dest]
+    dest = blocks.blocks[inst.dest]
+
+    location = Location() #string(context.line.file), context.line.line, 0)
+
+    # create conditional jump
+    cond_br = cf.cond_br(
+        cond,
+        true_args,
+        false_args;
+        trueDest=other_dest,
+        falseDest=dest,
+        location,
+    )
+
+    # push into the block
+    push!(blocks.current_block, cond_br)
 end
 
 
 function process_node(inst::ReturnNode, context::Context, blocks::Blocks)
-  # find the symbols tag where the return comes from (with column number)
-  # location = Location(string(context.line.file), context.line.line, 0)
+    # find the symbols tag where the return comes from (with column number)
+    # location = Location(string(context.line.file), context.line.line, 0)
 
-  # add to the block for debugging
-  push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]))
+    # add to the block for debugging
+    push!(blocks.current_block, func.return_([get_value(inst.val, context, blocks)]))
 end
 
 function process_node(inst::Nothing, context::Context, blocks::Blocks)

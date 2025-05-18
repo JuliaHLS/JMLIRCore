@@ -36,6 +36,17 @@ function augment_matrix()
     return Aug
 end
 
+# implicit vector-based control-flow, expanding compile-time information
+function modify_vector(idx, val)
+    a_vec = @MMatrix [1 2 3 4 5 6 7 8 9]
+   if idx > (length(a_vec) - 2)
+       a_vec[idx] = val
+   else
+       a_vec[idx] = -val
+   end
+   return a_vec
+end
+
 function create_mat()
     return @MMatrix [1 2 3 4 5; 6 7 8 9 0]
 end
@@ -257,4 +268,6 @@ end
    @test (@eval_mlir transpose_test()) == (@eval transpose_test())
    @test (@eval_mlir test_loops()) == (@eval test_loops())
    @test (@eval_mlir augment_matrix()) == (@eval augment_matrix())
+   @test (@eval_mlir modify_vector(5, 2)) == (@eval modify_vector(5, 2))
+   @test (@eval_mlir modify_vector(1, 2)) == (@eval modify_vector(1, 2))
 end

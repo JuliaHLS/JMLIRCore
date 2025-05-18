@@ -134,7 +134,7 @@ function generate_mlir(::Val{:(<)}, rettype::Type{<:Any})
 end
 
 function generate_mlir(::Val{:(>=)}, rettype::Type{<:Any})
-    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.gt))
+    return single_op_wrapper_no_result(cmpi_pred(julia.predicate.ge))
 end
 
 function generate_mlir(::Val{:(>)}, rettype::Type{<:Any})
@@ -153,8 +153,6 @@ function generate_mlir(::Val{:(!=)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.ne))
 end
 
-
-
 #### SPECIALISED OPERATIONS ####
 
 ### Number/Dialects/Type Specific Operations ###
@@ -162,9 +160,15 @@ function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.shrui)
 end
 
-function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
-    return single_op_wrapper_out_is_result(arith.shrui)
+function generate_mlir(::Val{Base.ashr_int}, rettype::Type{<:Integer})
+    return single_op_wrapper_out_is_result(arith.shrsi)
 end
+
+# signed left-shit is automatically reduced to a right-shift
+function generate_mlir(::Val{Base.shl_int}, rettype::Type{<:Integer})
+    return single_op_wrapper_out_is_result(arith.shlui)
+end
+
 
 function generate_mlir(::Val{Base.sitofp}, rettype::Type{<:AbstractFloat})
     return single_op_wrapper_with_result(arith.sitofp)

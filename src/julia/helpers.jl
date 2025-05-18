@@ -6,7 +6,7 @@ module JuliaFixSSA
 using MLIR
 using MLIR.IR
 
-using MLIR.Dialects: bufferization
+using MLIR.Dialects: bufferization, cf
 import MLIR
 import MLIR.IR
 using MLIR.API
@@ -62,7 +62,11 @@ function get_child_blocks!(visited::Set, curr::Block, targets::Vector{IR.Block})
     end
 end
 
-get_ret(op::IR.Operation) = IR.type.(collect_results(op))[1]
+function get_ret(op::IR.Operation) 
+    res = IR.type.(collect_results(op))
+
+    return length(res) == 0 ? nothing : res[1]
+end
 
 function return_block(block::Block)::Bool
     for op in IR.OperationIterator(block)
@@ -74,31 +78,19 @@ function return_block(block::Block)::Bool
     return false
 end
 
-function fix_ssa_dominated_block!(original_op::Operation, block::Block)
-    # create memref type arg
-    memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
+function fix_ssa_refs!(block, op, original_op, new_op, new_ssa)
+    # println("has new ssa: $new_ssa")
+    operands = collect_operands(op)
+    for (i, present_operand) in enumerate(operands)
+        if present_operand === IR.result(original_op)
+            # do not fix ops that do not return anything
+            !isnothing(get_ret(op)) || continue
+            IR.operand!(op, i, new_ssa)
 
-    IR.push_argument!(block, memref_type_with_dims) 
+            if (IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(original_op)) == size(get_ret(new_op)))
+                new_ssa = IR.result(op)
+                new_op = op
 
-    new_ssa::IR.Value = IR.argument(block, IR.nargs(block))
-    new_op = bufferization.to_tensor(new_ssa; result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
-    
-    first = IR.first_op(block)
-    IR.insert_before!(block, first, new_op)
-
-    new_ssa = IR.result(new_op)
-
-    for op in IR.OperationIterator(block)
-        operands = collect_operands(op)
-
-        for (i, present_operand) in enumerate(operands)
-            if (present_operand) === IR.result(original_op) && !(check_name(op, "func.return"))
-                IR.operand!(op, i, new_ssa)
-
-                if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
-                    new_ssa = IR.result(op)
-                    new_op = op
-                end
             elseif new_ssa == present_operand && !(check_name(op, "cf.br") || check_name(op, "cf.cond_br") ) # if SSA chain is found, progress
 
                 if IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op))
@@ -111,83 +103,42 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block)
                 end
             end
         end
-        
-        if check_name(op, "func.return")
-            operands = collect_operands(op)
-            @assert length(operands) == 1
+    end
 
-            if size(operands[1]) == size(new_ssa)
-                new_operands = [new_ssa]
-                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
-            end
+    op = IR.terminator(block)
+    if !isnothing(op) && check_name(op, "func.return")
+        operands = collect_operands(op)
+        @assert length(operands) == 1
+
+        println("processing $op")
+
+        if IR.julia_type(IR.type(operands[1])) <: AbstractArray && size(operands[1]) == size(new_ssa)
+            new_operands = [new_ssa]
+            API.mlirOperationSetOperands(op, length(new_operands), new_operands)
         end
+    end
 
-        if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
-            # fix the operands here to be in the right order
-            convert_to_memref_op = bufferization.to_memref(new_ssa; memref=memref_type_with_dims)
-            IR.insert_before!(block, op, convert_to_memref_op)
+    return new_op, new_ssa
+end
 
-            new_ssa = IR.result(convert_to_memref_op)
-            new_op = convert_to_memref_op
+function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa::Operation)
+    # create memref type arg
+     memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
 
-            if check_name(op, "cf.cond_br")
-                halfway_length = Int32((length(operands) - 1) / 2)
-                new_operands = [operands[1:(halfway_length+1)]...]
-                push!(new_operands,new_ssa)
-                push!(new_operands, operands[(halfway_length + 2):end]...)
-                push!(new_operands, new_ssa)
+    new_op = bufferization.to_tensor(IR.result(new_ssa); result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
+    
+    first = IR.first_op(block)
+    IR.insert_before!(block, first, new_op)
 
-                # new_operands = push!(operands, new_ssa)
-                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+    new_ssa = IR.result(new_op)
 
-                # fix attributes
-                at = IR.attr(op, "operandSegmentSizes")
+    for op in IR.OperationIterator(block)
+        operands = collect_operands(op)
 
-                cond = Int32(at[0])
-                first_args = Int32(at[1])
-                second_args = Int32(at[2])
-
-                first_args += 1
-                second_args += 1
-
-                new_at = IR.DenseArrayAttribute(Int32.([cond, first_args, second_args])::Vector{Int32})
-                # IR.rmattr!(op, "operandSegmentSizes")
-                IR.attr!(op, "operandSegmentSizes", new_at)
-            else
-                new_operands = push!(operands, new_ssa)
-                API.mlirOperationSetOperands(op, length(new_operands), new_operands)
-            end
-        end
+        new_op, new_ssa = fix_ssa_refs!(block, op, original_op, new_op, new_ssa) 
     end
 end
 
-function cond_br(
-    operands::Vector{Value};
-    trueDest::Block,
-    falseDest::Block,
-    location=Location(),
-)
-    _results = IR.Type[]
-    _operands = Value[operands...]
-    _owned_regions = Region[]
-    _successors = Block[trueDest, falseDest]
-    _attributes = IR.NamedAttribute[]
-    push!(
-        _attributes,
-        MLIR.Dialects.operandsegmentsizes([1, length(trueDestOperands), length(falseDestOperands)]),
-    )
-
-    return IR.create_operation(
-        "cf.cond_br",
-        location;
-        operands=_operands,
-        owned_regions=_owned_regions,
-        successors=_successors,
-        attributes=_attributes,
-        results=_results,
-        result_inference=false,
-    )
-end
 
 function collect_dominating_blocks(func_op::IR.Operation)::Vector{Any}
     # store dominating blocks
@@ -208,10 +159,72 @@ function collect_dominating_blocks(func_op::IR.Operation)::Vector{Any}
     return dominating_blocks
 end
 
+
+function collect_dominating_cond_blocks(func_op::IR.Operation)::Vector{Any}
+    # store dominating blocks
+    dominating_blocks::Vector{Any} = []
+
+    for region in IR.RegionIterator(func_op)
+        for block in IR.BlockIterator(region)
+            for op in IR.OperationIterator(block)
+                op_name = IR.name(op)
+                if check_name(op, "cf.cond_br") || check_name(op, "cf.cond_br")
+                    push!(dominating_blocks, block)
+                end
+            end
+        end
+    end
+    
+    return dominating_blocks
+end
+
+
+function collect_implicit_blocks(func_op::IR.Operation)::Vector{Any}
+    # store dominating blocks
+    implicit_blocks::Vector{Any} = []
+
+    for region in IR.RegionIterator(func_op)
+        prev_block_needs_ret = false
+        prev_block = nothing
+        for block in IR.BlockIterator(region)
+            if prev_block_needs_ret
+                push!(implicit_blocks, [prev_block, block])
+                prev_block_needs_ret = false
+            end
+
+            has_ret = false
+            for op in IR.OperationIterator(block)
+                has_ret = check_name(op, "cf.cond_br") || check_name(op, "cf.br")
+            end
+
+            prev_block_needs_ret = !has_ret 
+            prev_block = block
+        end
+    end
+    
+    return implicit_blocks 
+end
+
+function fix_implicit_blocks!(implicit_blocks)
+    empty_arg::Vector{Value} = []
+    for (src, dest) in implicit_blocks
+        # collect num ops
+        last_op = nothing
+        for op in IR.OperationIterator(src)
+            last_op = op
+        end
+
+        new_op = cf.br(empty_arg, dest=dest)
+        IR.insert_after!(src, last_op, new_op)
+    end
+end
+
+
+
 function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
     # collect branches
     target_collection = []
-    for (dominator, dominating_op) in dominating_blocks 
+    for (dominator, _) in dominating_blocks 
         visited = Set()
         targets = Vector{IR.Block}()
         get_child_blocks!(visited, dominator, targets)
@@ -222,19 +235,21 @@ function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
     return target_collection
 end
 
-function fix_ssa_dominating_block!(dom_block, collection)
-    for op in IR.OperationIterator(collection[1])
-        operands = collect_operands(op)
+
+function fix_ssa_dominating_block!(func_op::IR.Operation, dom_block::IR.Block)::Union{IR.Operation, Nothing}
+    new_op = func_op
+    new_ssa = IR.result(new_op)
+
+    for op in IR.OperationIterator(dom_block)
+        new_op, new_ssa = fix_ssa_refs!(dom_block, op, func_op, new_op, new_ssa)
 
         if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
+            shape = [size(get_ret((func_op)))...]
+            memref_type_with_dims = IR.MemRefType(eltype(get_ret(func_op)), shape, IR.Attribute(0))
+            buff_op = bufferization.to_memref(IR.result(func_op); memref=memref_type_with_dims)
+            IR.insert_before!(dom_block, op, buff_op)
 
-            shape = [size(get_ret(last(dom_block)))...]
-            memref_type_with_dims = IR.MemRefType(eltype(get_ret(last(dom_block))), shape, IR.Attribute(0))
-            buff_op = bufferization.to_memref(IR.result(last(dom_block)); memref=memref_type_with_dims)
-            IR.insert_before!(first(dom_block), op, buff_op)
-
-            new_operands = push!(operands, IR.result(buff_op))
-            API.mlirOperationSetOperands(op, length(new_operands), new_operands)
+            return buff_op
         end
     end
 end
@@ -459,6 +474,31 @@ module _JuliaPassHelpers
 
         println("processing: $op with ret type: $types")
 
+        # edge-case where only one argument is given, there exists an implicit zero
+        if length(operands[2:end]) == 0
+            println("FOUND NO EXTRA ARGUMENTS")
+            # take advantage of MLIR's strong typing
+            zero_op = arith.constant(;value=0, result=IR.Type(types[1]))
+            IR.insert_before!(block, op, zero_op)
+            zero_op_ref = IR.result(zero_op)
+
+            if types[1] <: Integer
+                new_op = fn_int(zero_op_ref, prev_val; result=ret)
+                IR.insert_after!(block, prev_op, new_op)
+
+                prev_op = new_op
+                replaced = true
+            elseif types[1] <: AbstractFloat
+                new_op = fn_float(zero_op_ref, prev_val; result=ret)
+                IR.insert_after!(block, prev_op, new_op)
+
+                prev_op = new_op
+                replaced = true
+            else
+                println("GOT TYPES: $types")
+            end
+        end
+
         for new_ref in operands[2:end]
             if types[1] <: Integer && types[2] <: Integer
                 new_op = fn_int(prev_val, new_ref; result=ret)
@@ -599,7 +639,6 @@ end
 
 
 function lower_op_to_mlir(op_name::Val{:(julia_mul)}, block::IR.Block, op::IR.Operation, replace_ops)
-    println("PROCESSING MUL")
     unroll_operation!(op, block, arith.muli, arith.mulf, replace_ops)
     unroll_operation_mat!(op, block, tosa.matmul, replace_ops)
 end
@@ -671,9 +710,6 @@ function lower_op_to_mlir(op_name::Val{:(julia_pow)}, block::IR.Block, op::IR.Op
             # create main scf loop
             main_loop = scf.for_(IR.result(c0), IR.result(idx_cast_op), IR.result(c1), [IR.result(cst)]; results= [IR.Type(types[1])], region=region)
 
-            # new_op = ((prev_val), new_ref; result=ret)
-            # println("Created main loop with operands: $(v)")
-
             IR.insert_after!(block, prev_op, main_loop)
 
             # insert items into the block
@@ -706,19 +742,16 @@ function lower_op_to_mlir(op_name::Val{:(julia_cmp)}, block::IR.Block, op::IR.Op
 end
 
 function lower_op_to_mlir(op_name::Val{:(julia_not_int)}, block::IR.Block, op::IR.Operation, replace_ops)
+    # collect information
     operands = collect_operands(op)
-    types = IR.julia_type.((IR.type.(operands)))
-
     ret = IR.type.(collect_results(op))[1]
 
     bitmask = arith.constant(; value=typemax(UInt64) % IR.julia_type(ret), result=ret)
     IR.insert_before!(block, op, bitmask)
 
-    println("got loc: $operands")
+    # lower not to xori
     xori = arith.xori(operands[1], IR.result(bitmask))
     IR.insert_before!(block, op, xori)
-
-    # reorder the input matrix based on the input dimensions
 
     push!(replace_ops, [op, xori])
 
@@ -726,19 +759,17 @@ end
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)
-    types = IR.julia_type.((IR.type.(operands)))
 
     ret = IR.type.(collect_results(op))[1]
 
     # reorder the input matrix based on the input dimensions
-    new_operand_order::Vector{IR.Value} = []
-
     dim1, dim2, dim3 = size(ret)
 
     reshaped_operands = reshape(operands, dim1, dim2, dim3)
     reshaped_operands = permutedims(reshaped_operands, (3, 2, 1))
     col_major_operands = vec(reshaped_operands)
 
+    # fix tensor arguments
     if IR.istensor(ret)
         new_op = tensor.from_elements(col_major_operands, result=ret)
         IR.insert_after!(block, op, new_op)
@@ -780,10 +811,6 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_adjoint)}, block::IR.Block, o
     target_transformation = target_transformation .- 1
     target_array = IR.NamedAttribute("perms", IR.DenseArrayAttribute(Int32.(target_transformation)::Vector{Int32}))
 
-    # create the operation
-    # perm_op = tosa.const_(output = IR.TensorType(size(target_transformation), IR.Type(Int32)), values=target_array)
-    # IR.insert_before!(block, op, perm_op) 
-
     # create transpose op
     new_op = tosa.transpose(ops, target_array; output=ret)
 
@@ -796,7 +823,6 @@ end
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)
-    types = IR.julia_type.((IR.type.(operands)))
 
     # naively cast to index TODO: only works for single requests
     sub_const = arith.constant(;value=1,result=IR.Type(Int))
@@ -805,16 +831,9 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, 
     indices::Vector{Value} = operands[2:end]
 
     # create operation
-    gather_dims = IR.DenseArrayAttribute([0])
     ret = IR.type.(collect_results(op))[1]
 
-    # create transpose op
-    # if IR.istensor(operands[1])
-    #     # ADD THE EXTRACT SLICE HERE
-    #     error("extract_slice not supported")
-    # else
     new_op = tensor.extract(operands[1], _JuliaPassHelpers.transform_indices(block, op, indices); result=ret)
-    # end
 
     # insert into the program
     IR.insert_after!(block, op, new_op)
@@ -824,7 +843,6 @@ end
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_setindex)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)
-    types = IR.julia_type.((IR.type.(operands)))
     ret = IR.type.(collect_results(op))[1]
 
     scalar::Value = operands[1]
@@ -835,16 +853,6 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_setindex)}, block::IR.Block, 
     IR.insert_after!(block, op, new_op)
 
     push!(replace_ops, [op, new_op])
-
-    # fix the rewrite issue from Julia's IR
-    ctx = context(op)
-    rewriter = API.mlirIRRewriterCreate(ctx)
-
-    GC.@preserve rewriter begin
-        API.mlirRewriterBaseReplaceAllUsesExcept(rewriter, dest, IR.result(new_op, 1), new_op)
-    end
-
-    API.mlirIRRewriterDestroy(rewriter)
 end
 
 end

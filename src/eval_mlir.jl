@@ -128,14 +128,9 @@ function eval_mlir(f, args...; ctx = IR.context())
             result_out = unsafe_wrap(Array{item_type, 3}, ptr, Tuple(corrected_dims); own = false)
             result_out = permutedims(reshape(result_out, corrected_dims), (3, 2, 1))
 
-
-            for _ in 1:(length(size(result_out)) - length(size(original_ret)))
-                for (idx, val) in enumerate(size(result_out))
-                    if val == 1
-                        result_out = dropdims(result_out; dims = idx) 
-                    end
-                end
-            end
+            # find all dims of length 1
+            dims_to_drop = findall(x -> x==1, size(result_out))
+            result_out = dropdims(result_out; dims = tuple(dims_to_drop...))
 
             GC.gc()
 
