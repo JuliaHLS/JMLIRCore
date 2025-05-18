@@ -125,8 +125,13 @@ function code_mlir(f, types; ctx = IR.context())
 
         ### Lower from julia dialect ###
         run!(JuliaPasses.FixTensorSSA(), mod, ctx)
+        # run!(JuliaPasses.FixCondBrDominationSemantics(), mod, ctx)
+        println("GOT MOD: $mod")
+        run!(JuliaPasses.FixImplicitControlFlow(), mod, ctx)
         run!(JuliaPasses.LowerJuliaArith(), mod, ctx)
         run!(JuliaPasses.LowerJuliaMat(), mod, ctx)
+
+        println("produced mod: $mod")
 
         ### standard optimisation passes
         MLIR.API.mlirRegisterAllPasses()

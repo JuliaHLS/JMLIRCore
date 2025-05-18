@@ -72,14 +72,16 @@ function IR.pass_run(::LowerJuliaMat, func_op)
                 op_name = replace(name(op), "." => "_")
 
                 # if op is in the julia dialect
-                if length(op_name) >= 9 && op_name[1:5] == "julia.mat"
+                if length(op_name) >= 9 && op_name[1:9] == "julia_mat"
                     op_sym = Symbol(op_name)
                     lower_op_to_mlir(Val(op_sym), block, op, replace_ops)
+                    println("new_mod: $func_op")
                 end
             end
         end
     end
 
+    println("DONE")
     rewrite_references(replace_ops)  
 end
 
@@ -139,6 +141,47 @@ function IR.pass_run(::FixTensorSSA, func_op)
         end
     end
 end
+
+struct FixImplicitControlFlow <: IR.AbstractPass end
+
+IR.opname(::FixImplicitControlFlow) = "func.func"
+
+function IR.pass_run(::FixImplicitControlFlow, func_op)
+    println("Running FixImplicitControlFlow")
+    
+    implicit_blocks = JuliaFixSSA.collect_implicit_blocks(func_op)
+    println("GOT: $implicit_blocks")
+    JuliaFixSSA.fix_implicit_blocks!(implicit_blocks)
+    # fix SSA on dominated branch
+end
+
+
+struct FixCondBrDominationSemantics<: IR.AbstractPass end
+
+IR.opname(::FixCondBrDominationSemantics) = "func.func"
+
+function IR.pass_run(::FixCondBrDominationSemantics, func_op)
+    println("Running FixCondBrDominationSemantics")
+
+    dominating_blocks = JuliaFixSSA.collect_dominating_cond_blocks(func_op)
+    target_collection = JuliaFixSSA.collect_dominated_cond_branches(dominating_blocks)
+
+    println("Got dominating blocks: $dominating_blocks")
+
+    # fix SSA on dominated branch
+    for (dom_block, collection) in zip(dominating_blocks, target_collection)
+        # fix SSA for the entry block
+        args = JuliaFixSSA.fix_cond_dominating_block!(dom_block)
+        # if new_ssa != nothing
+        #     # fix SSA for the dominated blocks
+            for target_block in collection[2:end]
+                JuliaFixSSA.fix_cond_dominated_block!(target_block, args)
+            end
+        # end
+    end
+
+end
+
 
 
 end

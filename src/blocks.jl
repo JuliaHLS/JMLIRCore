@@ -12,7 +12,6 @@ function prepare_block(ir, bb)
     inst isa Core.PhiNode || continue
 
     type = stmt[:type]
-
     IR.push_argument!(b, IR.Type(type))
   end
 
@@ -25,16 +24,75 @@ function collect_value_arguments(ir, from, to)
   to = ir.cfg.blocks[to]
   values = []
   for s in to.stmts
+    println("processing stmt: $s")
     stmt = ir.stmts[s]
     inst = stmt[:inst]
-    inst isa Core.PhiNode || continue
 
-    edge = findfirst(==(from), inst.edges)
-    if isnothing(edge) # use dummy scalar val instead
-      val = zero(stmt[:type])
-      push!(values, val)
-    else
-      push!(values, inst.values[edge])
+    if inst isa Core.PhiNode
+        edge = findfirst(==(from), inst.edges)
+        if isnothing(edge) # use dummy scalar val instead
+          val = zero(stmt[:type])
+          push!(values, val)
+        else
+          push!(values, inst.values[edge])
+        end
+    end
+  end
+  return values
+end
+
+function collect_value_arguments_ir(ir, from, to, dest_block::Block)
+  to = ir.cfg.blocks[to]
+  values= []
+
+  seen_vals = Set([])
+
+  println("to: $to")
+  println("ir: $ir")
+
+  for s in to.stmts
+      println("s: $s")
+      println("seen: $seen_vals")
+    stmt = ir.stmts[s]
+    inst = stmt[:inst]
+
+    type = stmt[:type]
+    # println("inst: $(inst.id) and $(typeof(stmt))")
+    println("inst: $inst")
+    if Meta.isexpr(inst, :invoke)
+        push!(seen_vals, s)
+    end
+      println("seen: $seen_vals")
+
+    if inst isa Core.PhiNode
+        edge = findfirst(==(from), inst.edges)
+                  # println("push arg: $s")
+        # IR.push_argument!(dest_block, IR.Type(type))
+
+        if isnothing(edge) # use dummy scalar val instead
+          val = zero(stmt[:type])
+          push!(values, val)
+        else
+          push!(values, inst.values[edge])
+        end
+    elseif Meta.isexpr(inst, :invoke) # forward externally accessed values
+        for arg in inst.args[(begin+1):end]
+            # if arg isa Core.SSAValue && !(arg.id in seen_vals)
+            #     if !(arg in values)
+            #       push!(values, arg)
+            #       println("push arg: $s")
+
+            #       IR.push_argument!(dest_block, IR.Type(type))
+            #   end
+            # elseif arg isa Core.Argument
+            #     println("HERE2")
+            #     if !(arg in values)
+            #       push!(values, arg)
+            #       println("push arg: $s")
+            #       IR.push_argument!(dest_block, IR.Type(type))
+            #   end
+            # end
+        end
     end
   end
   return values
@@ -43,6 +101,7 @@ end
 
 # get value
 function get_value(x, context::Context, blocks::Blocks)
+    println("processing : $x")
     if x isa Core.SSAValue
         @assert isassigned(context.values, x.id) "value $x was not assigned"
         context.values[x.id]
@@ -61,6 +120,33 @@ function get_value(x, context::Context, blocks::Blocks)
         error("could not use value $x of type $(typeof(x)) inside MLIR. Please review ScalarTypes.")
     end
 end
+
+function get_value_ir(x, context::Context, blocks::Blocks)
+    println("processing : $x")
+    if x isa Core.SSAValue
+        if !(x.id in context.values)
+            println("is assigned :$(isassigned(context.values, x.id))") 
+            return nothing
+        end
+        @assert isassigned(context.values, x.id) "value $x was not assigned"
+        context.values[x.id]
+    elseif x isa Core.Argument
+        IR.argument(blocks.entry_block, x.n - 1)
+    elseif x isa ScalarTypes 
+        IR.result(push!(blocks.current_block, arith.constant(; value=x)))
+    elseif x isa Tuple       # process all tuple types
+        results::Vector{IR.Value} = []
+        for init_val ∈ collect(x)
+            ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=init_val)))
+            push!(results, ssa_res)
+        end
+        results::Vector{IR.Value}
+    else
+        error("could not use value $x of type $(typeof(x)) inside MLIR. Please review ScalarTypes.")
+    end
+end
+
+
 
 
 

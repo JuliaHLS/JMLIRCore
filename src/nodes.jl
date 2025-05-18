@@ -50,7 +50,7 @@ end
 
 # process PhiNode
 function process_node(inst::PhiNode, context::Context, blocks::Blocks)
-  
+    println("got phi: $inst") 
   # collect phi node metadata
   for (source_block_idx, value) in zip(inst.edges, inst.values)
     mapped_ref = get!(context.phi_nodes_metadata, source_block_idx, [])
@@ -71,23 +71,39 @@ end
 
 
 function process_node(inst::GotoNode, context::Context, blocks::Blocks)
-  args = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.label), context, blocks)
+    println("got goto: $inst") 
+    args::Vector{IR.Value} = filter(!isnothing, get_value.(collect_value_arguments_ir(context.ir, blocks.block_id, inst.label, blocks.blocks[inst.label]), context, blocks))
   dest = blocks.blocks[inst.label]
   location = Location()#Location(string(context.line.file), context.line.line, 0)
   push!(blocks.current_block, cf.br(args; dest, location))
 end
 
+function set_block_args!(block::Block, args::Vector{IR.Value})
+    for arg in args
+        println("processing arg: $arg, $(typeof(arg))")
+        IR.push_argument!(block, IR.Type(arg))
+    end
+end
 
 function process_node(inst::GotoIfNot, context::Context, blocks::Blocks)
-  false_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, inst.dest), Ref(context), Ref(blocks))
+    println("gotoifnot: $inst")
+    arg = collect_value_arguments_ir(context.ir, blocks.block_id, inst.dest, blocks.blocks[inst.dest])
+     println("got argssssssssssssss: $arg")
+     d = get_value_ir.(arg, Ref(context), Ref(blocks))
+     println("DDDDDDD: $d")
+     false_args::Vector{Value} = filter(!isnothing, d)
+  println("false_args: $false_args")
   cond = get_value(inst.cond, context, blocks)
   @assert length(blocks.bb.succs) == 2 # NOTE: We assume that length(bb.succs) == 2, this might be wrong
   other_dest = only(setdiff(blocks.bb.succs, inst.dest))
-  true_args::Vector{Value} = get_value.(collect_value_arguments(context.ir, blocks.block_id, other_dest), context, blocks)
+  true_args::Vector{Value} = filter(!isnothing, get_value_ir.(collect_value_arguments_ir(context.ir, blocks.block_id, other_dest, blocks.blocks[other_dest]), context, blocks))
   other_dest = blocks.blocks[other_dest]
   dest = blocks.blocks[inst.dest]
 
   location = Location() #string(context.line.file), context.line.line, 0)
+
+  # set_block_args!(other_dest, true_args)
+  # set_block_args!(dest, false_args)
 
   cond_br = cf.cond_br(
     cond,
