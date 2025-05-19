@@ -125,10 +125,16 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
     # create memref type arg
      memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
 
-    new_op = bufferization.to_tensor(IR.result(new_ssa); result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
+    new_op::IR.Operation = bufferization.to_tensor(IR.result(new_ssa); result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
     
     first = IR.first_op(block)
-    IR.insert_before!(block, first, new_op)
+    println("NEW OP: $new_op of type $(typeof(new_op))")
+
+    if first != nothing
+        IR.insert_before!(block, first, new_op)
+    else # don't insert into empty blocks
+        return
+    end
 
     new_ssa = IR.result(new_op)
 
@@ -215,7 +221,12 @@ function fix_implicit_blocks!(implicit_blocks)
         end
 
         new_op = cf.br(empty_arg, dest=dest)
-        IR.insert_after!(src, last_op, new_op)
+
+        if last_op == nothing
+            push!(src, new_op)
+        else
+            IR.insert_after!(src, last_op, new_op)
+        end
     end
 end
 
@@ -756,6 +767,24 @@ function lower_op_to_mlir(op_name::Val{:(julia_not_int)}, block::IR.Block, op::I
     push!(replace_ops, [op, xori])
 
 end
+
+function lower_op_to_mlir(op_name::Val{:(julia_neg_int)}, block::IR.Block, op::IR.Operation, replace_ops)
+    # collect information
+    operands = collect_operands(op)
+    ret = IR.type.(collect_results(op))[1]
+
+    bitmask = arith.constant(; value=0, result=ret)
+
+    IR.insert_before!(block, op, bitmask)
+
+    # lower not to xori
+    xori = arith.subi(IR.result(bitmask), operands[1]; result=ret)
+    IR.insert_before!(block, op, xori)
+
+    push!(replace_ops, [op, xori])
+
+end
+
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)

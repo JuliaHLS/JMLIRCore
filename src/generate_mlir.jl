@@ -18,14 +18,16 @@ struct MethodDetails
     # translate intrinsics (sometimes unavoidable if code templates
     # are pre-determined)
     function MethodDetails(fn::Function)
+        println("Got fn: $fn")
         fn_sym::Union{Symbol, Nothing} = translate_intrinsic(Val(nameof(fn)), fn)
-        println("Mapped $fn to $fn_sym")
+        println("Mapped $fn to $fn_sym with ret types $(Base.return_types(fn))")
         new(clean_mangled_symbol(fn_sym), first(Base.return_types(fn)))
     end
 
 
     # process Expr, example usecase: instantiating Matrices via a `new` call
     function MethodDetails(fn::Expr)
+        println("Got fn: $fn")
         new(clean_mangled_symbol(fn.head), first(fn.args))
     end
 end
@@ -35,6 +37,14 @@ translate_intrinsic(::Val{:(add_int)}, fn) = return :+
 translate_intrinsic(::Val{:(sub_int)}, fn) = return :-
 translate_intrinsic(::Val{:(mul_int)}, fn) = return :*
 translate_intrinsic(::Val{:(not_int)}, fn) = return :(not_int)
+translate_intrinsic(::Val{:(sle_int)}, fn) = return :(<=)
+translate_intrinsic(::Val{:(slt_int)}, fn) = return :(<)
+translate_intrinsic(::Val{:(slt_int)}, fn) = return :(<)
+translate_intrinsic(::Val{:(bitcast)}, fn) = return :(bitcast)
+translate_intrinsic(::Val{:(ashr_int)}, fn) = return :(ashr_int)
+translate_intrinsic(::Val{:(neg_int)}, fn) = return :(neg_int)
+translate_intrinsic(::Val{:(shl_int)}, fn) = return :(shl_int)
+translate_intrinsic(::Val{:(ifelse)}, fn) = return :(ifelse)
 translate_intrinsic(::Val{<:Any}, fn) = first(methods(fn)).name == :IntrinsicFunction ? fn : first(methods(fn)).name
 
 function generate_mlir(md::MethodDetails)
@@ -160,13 +170,17 @@ function generate_mlir(::Val{Base.lshr_int}, rettype::Type{<:Integer})
     return single_op_wrapper_out_is_result(arith.shrui)
 end
 
-function generate_mlir(::Val{Base.ashr_int}, rettype::Type{<:Integer})
-    return single_op_wrapper_out_is_result(arith.shrsi)
+function generate_mlir(::Val{:(ashr_int)}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(arith.shrsi)
 end
 
 # signed left-shit is automatically reduced to a right-shift
-function generate_mlir(::Val{Base.shl_int}, rettype::Type{<:Integer})
-    return single_op_wrapper_out_is_result(arith.shlui)
+function generate_mlir(::Val{:(shl_int)}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(arith.shli)
+end
+
+function generate_mlir(::Val{:(bitcast)}, rettype::Type{<:Any})
+    return single_op_wrapper_out_is_result(arith.bitcast)
 end
 
 
@@ -212,3 +226,13 @@ end
 function generate_mlir(::Val{:(adjoint)}, rettype::Type{<:Any})
     return single_op_wrapper_output_is_result(julia.mat_adjoint)
 end
+
+function generate_mlir(::Val{:(neg_int)}, rettype::Type{<:Any})
+    return single_op_wrapper_output_is_result(julia.neg_int)
+end
+
+function generate_mlir(::Val{:(ifelse)}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(arith.select)
+end
+
+

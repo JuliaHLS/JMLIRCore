@@ -111,6 +111,25 @@ function mat_adjoint(input1::Value; output::IR.Type, location=Location())
     )
 end
 
+function neg_int(input1::Value; output::IR.Type, location=Location())
+    _results = IR.Type[output,]
+    _operands = Value[input1]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "julia.neg_int",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
 function mat_setindex(
     args::Vector{Value};
     result=nothing::Union{Nothing,IR.Type},
