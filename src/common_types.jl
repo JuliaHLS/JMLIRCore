@@ -6,6 +6,7 @@ using MLIR
 using MLIR.Dialects: arith, func, cf, linalg, math
 using StaticArrays
 using LinearAlgebra
+using FixedPointNumbers
 
 include("compiler.jl")
 
@@ -32,11 +33,27 @@ end
 Base.broadcastable(c::Context) = Ref(c)
 Base.broadcastable(b::Blocks) = Ref(b)
 
+# recast fixed as integers
+function recast_fixed(x)
+    if x isa Fixed
+        type = typeof(x)
+        underlying_datatype = first(type.parameters)
+        return reinterpret(underlying_datatype, x)
+    else
+        return x
+    end
+end
 
-ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray}
+
+ScalarTypes = Union{Bool, UInt8, UInt64,Int64,UInt32,Int32,Float32,Float64, SArray, MArray, Fixed}
 
 # Extend MLIR.jl
 function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
+    return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
+end
+
+function IR.Type(T::Core.Type{<:Fixed}; context::IR.Context=context())
+    println("Sizeof: $(sizeof(T) * 8)")
     return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
 end
 

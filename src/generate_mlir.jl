@@ -48,10 +48,13 @@ translate_intrinsic(::Val{:(ifelse)}, fn) = return :(ifelse)
 translate_intrinsic(::Val{<:Any}, fn) = first(methods(fn)).name == :IntrinsicFunction ? fn : first(methods(fn)).name
 
 function generate_mlir(md::MethodDetails)
+    println("Got val: $(md)")
+    println("Got $(Val(md.sym)) ret type: $(md.rettype)")
     return generate_mlir(Val(md.sym), (md.rettype))
 end
 
 function generate_mlir(md::MethodDetails)
+    println("Got $(Val(md.sym)) ret type: $(md.rettype)")
     return generate_mlir(Val(md.sym), (md.rettype))
 end
 
@@ -104,6 +107,7 @@ end
 
 ### ARITHMETIC ###
 function generate_mlir(::Val{:+}, rettype::Type{<:Any})
+    println("here")
     return single_op_wrapper_with_result(julia.add)
 end
 

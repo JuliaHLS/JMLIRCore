@@ -1,10 +1,27 @@
 include("code_mlir.jl")
 include("compiler.jl")
 
+using MLIR.Dialects.memref: reinterpret_cast
 function invoke(jit::IR.ExecutionEngine, name::String, arguments)
     fn = MLIR.API.mlirExecutionEngineInvokePacked(jit, name, arguments)
     return fn == C_NULL ? nothing : fn
 end
+
+# recast_arguments(x::Fixed) = return reinterpret(x)
+function recast_arguments(x::Any) 
+    println(x)
+    println(typeof(x))
+    println(x isa Fixed)
+    if x isa Expr
+        println(x)
+        println(typeof(x))
+        type = eval(x)
+        x = Expr(:call, :Int, eval(reinterpret(type)))
+    end
+
+    return x
+end
+                                    
 
 "Macro @eval_mlir f(args...)"
 macro eval_mlir(call)
@@ -12,6 +29,7 @@ macro eval_mlir(call)
 
     f = esc(first(call.args))
     arg_types = esc(call.args)
+    println("Got args: $arg_types")
 
     quote
         eval_mlir($f, $arg_types...)
@@ -29,6 +47,8 @@ function external_lowering_mlir_opt!(op, passes::Vector{Cmd} , ctx)
     open("/tmp/temp.mlir", "w") do io
         write(io, mlir_str)
     end
+    
+    sleep(0.1)
 
     # lower
     for pass in passes
@@ -72,6 +92,8 @@ function eval_mlir(f, args...; ctx = IR.context())
     interp = MLIRInterpreter()
     println("Created MLIRInterpreter")
     _, ret = only(CC.code_ircode(f, processed_arg_types_tuple; interp=interp))
+
+    println("got ret: $ret")
     
 
 
@@ -81,7 +103,7 @@ function eval_mlir(f, args...; ctx = IR.context())
     mod = code_mlir(f, arg_types; ctx=ctx)
 
     GC.@preserve mod begin
-        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named,tosa-to-linalg))" -o /tmp/temp.mlir`, `mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
+        mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named,tosa-to-linalg))" -o /tmp/temp2.mlir`, `mlir-opt /tmp/temp2.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
         mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir --canonicalize -o /tmp/temp_out.mlir`], ctx)
 
         mod = external_lowering_mlir_opt!(mod, [`mlir-opt /tmp/temp.mlir -one-shot-bufferize="bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map" -o /tmp/temp_out.mlir`], ctx)
@@ -106,14 +128,27 @@ function eval_mlir(f, args...; ctx = IR.context())
         jit = IR.ExecutionEngine(mod, 0)
         fptr = IR.lookup(jit, String(nameof(f)))
 
+        println("args: $(args[2:end])")
+        for arg in args
+            println("has arg: $arg")
+        end
+        new_args = recast_arguments.(args[2:end])
+        println("got new args: $new_args")
+        # args[2:end] = new_args #recast_arguments.(args[2:end])
 
-        expanded_args = eval(Expr(:tuple, args[2:end]...))
+        expanded_args = eval(Expr(:tuple, new_args...))
+        processed_arg_types_tuple = map(arg -> Core.Typeof(eval(arg)), new_args)
         expanded_types = Expr(:tuple, processed_arg_types_tuple...)
+        println("Expanded types: $expanded_types")
 
         original_ret = ret
         if ret <: AbstractArray
             ret = MatRes
+        elseif ret <: Fixed
+            ret = first(ret.parameters)
         end
+
+        println("new ret type: $ret")
 
         dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
 
@@ -135,6 +170,12 @@ function eval_mlir(f, args...; ctx = IR.context())
             GC.gc()
 
             result = convert(original_ret, result_out)
+        end
+
+        println("original_ret: $original_ret")
+        if original_ret <: Fixed
+            println("recasting $result as $original_ret")
+            result = reinterpret(original_ret, result)
         end
 
         return result

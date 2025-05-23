@@ -28,6 +28,7 @@ macro code_mlir(call)
 end
 
 
+
 "Translate typed IR into MLIR"
 function code_mlir(f, types; ctx = IR.context())
     # if !IR._has_context()
@@ -53,7 +54,12 @@ function code_mlir(f, types; ctx = IR.context())
 
     println("Got IR: $ir")
 
-    result_types = [IR.Type(ret)]
+
+    if ret isa Union
+        error("Return type needs to be type-stable")
+    else 
+        result_types = [IR.Type(ret)]
+    end
 
     # values
     values = Vector{Value}(undef, length(ir.stmts))
@@ -135,7 +141,7 @@ function code_mlir(f, types; ctx = IR.context())
         opm = IR.OpPassManager(pm)
 
         IR.add_pipeline!(opm,
-                         "canonicalize{region-simplify=disabled},\
+                         "canonicalize{region-simplify=normal},\
                          cse,\
                          loop-invariant-code-motion,\
                          sroa,\

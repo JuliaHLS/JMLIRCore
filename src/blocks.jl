@@ -1,6 +1,8 @@
 include("nodes.jl")
 
 ## Basic Block Preprocessing
+using Base.Compiler: FixedNode
+using FixedPointNumbers
 
 "Generates a block argument for each phi node present in the block."
 function prepare_block(ir, bb)
@@ -48,6 +50,7 @@ function get_value(x, context::Context, blocks::Blocks)
     elseif x isa Core.Argument
         IR.argument(blocks.entry_block, x.n - 1)
     elseif x isa ScalarTypes 
+        x = recast_fixed(x)
         IR.result(push!(blocks.current_block, arith.constant(; value=x)))
     elseif x isa Tuple       # process all tuple types
         results::Vector{IR.Value} = []
