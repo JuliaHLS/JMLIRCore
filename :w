@@ -1,0 +1,318 @@
+include("compiler.jl")
+
+import Core
+using Core.Compiler
+
+using StaticArrays  
+import .Core.Compiler: CallInfo
+
+"""
+    MLIRInterpreter <: AbstractInterpreter
+
+MLIRInterpreter implements custom behaviour for the MLIR hardware compilation pipeline
+without modifying default behaviour
+"""
+struct MLIRInterpreter <: Core.Compiler.AbstractInterpreter
+    # The world age we're working inside of
+    world::UInt
+
+    # method table to lookup for during inference on this world age
+    method_table::Core.Compiler.CachedMethodTable{Core.Compiler.InternalMethodTable}
+
+    # Cache of inference results for this particular interpreter
+    inf_cache::Vector{Core.Compiler.InferenceResult}
+    codegen::IdDict{CC.CodeInstance,CC.CodeInfo}
+
+    # Parameters for inference and optimization
+    inf_params::Core.Compiler.InferenceParams
+    opt_params::Core.Compiler.OptimizationParams
+end
+
+
+
+""" Default Constructor """
+function MLIRInterpreter(world::UInt=CC.get_world_counter();
+    inf_params::Core.Compiler.InferenceParams=Core.Compiler.InferenceParams(),
+    opt_params::Core.Compiler.OptimizationParams=Core.Compiler.OptimizationParams())
+    curr_max_world = CC.get_world_counter()
+
+    # Sometimes the caller is lazy and passes typemax(UInt).
+    # we cap it to the current world age for correctness
+    if world == typemax(UInt)
+        world = curr_max_world
+    end
+
+    # If they didn't pass typemax(UInt) but passed something more subtly
+    # incorrect, fail out loudly.
+    @assert world <= curr_max_world
+
+    method_table = Core.Compiler.CachedMethodTable(Core.Compiler.InternalMethodTable(world))
+    inf_cache = Vector{Core.Compiler.InferenceResult}() # Initially empty cache
+    codegen = IdDict{CC.CodeInstance,CC.CodeInfo}()
+
+    return MLIRInterpreter(world, method_table, inf_cache, codegen, inf_params, opt_params)
+end
+
+# Satisfy the AbstractInterpreter API contract
+Core.Compiler.InferenceParams(interp::MLIRInterpreter) = interp.inf_params
+Core.Compiler.OptimizationParams(interp::MLIRInterpreter) = interp.opt_params
+Core.Compiler.get_inference_world(interp::MLIRInterpreter) = interp.world
+Core.Compiler.get_inference_cache(interp::MLIRInterpreter) = interp.inf_cache
+Core.Compiler.cache_owner(interp::MLIRInterpreter) = nothing
+
+
+"""
+    Custom Inlining Mechanism
+
+Implemented in the Abstract Interpreter for robustness
+"""
+
+struct NoinlineCallInfo <: CallInfo
+    info::CallInfo  # wrapped call info
+end
+
+# add edges
+Compiler.add_edges_impl(edges::Vector{Any}, info::NoinlineCallInfo) = Compiler.add_edges!(edges, info.info)
+Compiler.nsplit_impl(info::NoinlineCallInfo) = Compiler.nsplit(info.info)
+Compiler.getsplit_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getsplit(info.info, idx)
+Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(info.info, idx)
+
+
+
+""" Tag abstract calls with NoinlineCallInfo when needed """
+function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
+
+    ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
+
+    return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
+        for t in arginfo.argtypes
+            if t isa Core.Const# && typeof(t.val) == DataType
+                # println("t: ", t)
+                if t.val == SVector
+                    println("Found constructor")
+                    (; rt, exct, effects, info) = ret
+                    println("Noort call: ", effects.nortcall)
+                    println("Effect free : ", effects.effect_free)
+                    return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+                end
+                if t.val == Base.:+
+                    (; rt, exct, effects, info) = ret
+                    return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+                end
+            end
+        end
+        return ret
+    end
+end
+
+
+""" Custom inlining policy """
+function Compiler.src_inlining_policy(interp::MLIRInterpreter,
+    @nospecialize(src), @nospecialize(info::CallInfo), stmt_flag::UInt32)
+
+    # don't inline tagged items
+    if isa(info, NoinlineCallInfo)
+        return false
+    end
+    
+    # else invoke default policy
+    return @invoke Compiler.src_inlining_policy(interp::Compiler.AbstractInterpreter,
+        src::Any, info::CallInfo, stmt_flag::UInt32)
+end
+
+
+function Core.Compiler.finish(interp::MLIRInterpreter, opt::Core.Compiler.OptimizationState, ir::Core.Compiler.IRCode, caller::Core.Compiler.InferenceResult)
+    (; src, linfo) = opt
+    (; def, specTypes) = linfo
+
+    # set default for no inlining
+    force_noinline = false
+
+    # compute inlining and other related optimizations
+    result = caller.result
+    @assert !(result isa Core.Compiler.LimitedAccuracy)
+    result = Core.Compiler.widenslotwrapper(result)
+
+    opt.ir = ir
+
+    # determine edgecases and cache the inlineability
+    sig = CC.unwrap_unionall(specTypes)
+    if !(isa(sig, DataType) && sig.name === Tuple.name)
+        force_noinline = true
+    end
+    if !Core.Compiler.is_declared_inline(src) && result === Core.Compiler.Bottom
+        force_noinline = true
+    end
+
+    # determine if we inline the method
+    if isa(def, Method)
+        Core.Compiler.set_inlineable!(src, !force_noinline)
+    end
+
+    return nothing
+end
+
+function Core.Compiler.widenconst(x::SVector{N,T}) where {N,T}
+    println("widening the const for SVector{$N, $T}")
+    return Base.widenconst(x)
+end
+function Core.Compiler.widenconst(x::Int64)
+    println("widening the const for int")
+    return Base.widenconst(x)
+end
+function Core.Compiler.widenconst(x)
+    println("generic")
+    return Base.widenconst(x)
+end
+
+
+
+# Tain the lattice 
+
+
+# using Core: SlotNumber, Argument
+# using .Compiler: slot_id, tmerge_fast_path
+# import .Compiler:
+#     AbstractLattice, BaseInferenceLattice, IPOResultLattice, InferenceLattice,
+#     widenlattice, is_valid_lattice_norec, typeinf_lattice, ipo_lattice, optimizer_lattice,
+#     widenconst, tmeet, tmerge, ⊑, abstract_eval_special_value, widenreturn
+
+# struct TaintLattice{PL<:AbstractLattice} <: Compiler.AbstractLattice
+#     parent::PL
+# end
+# Compiler.widenlattice(𝕃::TaintLattice) = 𝕃.parent
+# Compiler.is_valid_lattice_norec(::TaintLattice, @nospecialize(elm)) = isa(elm, Taint)
+
+# struct InterTaintLattice{PL<:AbstractLattice} <: Compiler.AbstractLattice
+#     parent::PL
+# end
+# Compiler.widenlattice(𝕃::InterTaintLattice) = 𝕃.parent
+# Compiler.is_valid_lattice_norec(::InterTaintLattice, @nospecialize(elm)) = isa(elm, InterTaint)
+
+# const AnyTaintLattice{L} = Union{TaintLattice{L},InterTaintLattice{L}}
+
+# Compiler.typeinf_lattice(::MLIRInterpreter) = InferenceLattice(TaintLattice(BaseInferenceLattice.instance))
+# Compiler.ipo_lattice(::MLIRInterpreter) = InferenceLattice(InterTaintLattice(IPOResultLattice.instance))
+# Compiler.optimizer_lattice(::MLIRInterpreter) = InterTaintLattice(Core.Compiler.SimpleInferenceLattice.instance)
+
+# struct Taint
+#     typ
+#     slots::BitSet
+#     function Taint(@nospecialize(typ), slots::BitSet)
+#         if typ isa Taint
+#             slots = typ.slots ∪ slots
+#             typ = typ.typ
+#         end
+#         return new(typ, slots)
+#     end
+# end
+# Taint(@nospecialize(typ), id::Int) = Taint(typ, push!(BitSet(), id))
+# function Base.:(==)(a::Taint, b::Taint)
+#     return a.typ == b.typ && a.slots == b.slots
+# end
+
+# struct InterTaint
+#     typ
+#     slots::BitSet
+#     function InterTaint(@nospecialize(typ), slots::BitSet)
+#         if typ isa InterTaint
+#             slots = typ.slots ∪ slots
+#             typ = typ.typ
+#         end
+#         return new(typ, slots)
+#     end
+# end
+# InterTaint(@nospecialize(typ), id::Int) = InterTaint(typ, push!(BitSet(), id))
+# function Base.:(==)(a::InterTaint, b::InterTaint)
+#     return a.typ == b.typ && a.slots == b.slots
+# end
+
+# const AnyTaint = Union{Taint, InterTaint}
+
+# function Compiler.tmeet(𝕃::AnyTaintLattice, @nospecialize(v), @nospecialize(t::Type))
+#     T = isa(𝕃, TaintLattice) ? Taint : InterTaint
+#     if isa(v, T)
+#         v = v.typ
+#     end
+#     return tmeet(widenlattice(𝕃), v, t)
+# end
+# function Compiler.tmerge(𝕃::AnyTaintLattice, @nospecialize(typea), @nospecialize(typeb))
+#     r = tmerge_fast_path(𝕃, typea, typeb)
+#     r !== nothing && return r
+#     # type-lattice for Taint
+#     T = isa(𝕃, TaintLattice) ? Taint : InterTaint
+#     if isa(typea, T)
+#         if isa(typeb, T)
+#             return T(
+#                 tmerge(widenlattice(𝕃), typea.typ, typeb.typ),
+#                 typea.slots ∪ typeb.slots)
+#         else
+#             typea = typea.typ
+#         end
+#     elseif isa(typeb, T)
+#         typeb = typeb.typ
+#     end
+#     return tmerge(widenlattice(𝕃), typea, typeb)
+# end
+# function Compiler.:⊑(𝕃::AnyTaintLattice, @nospecialize(typea), @nospecialize(typeb))
+#     T = isa(𝕃, TaintLattice) ? Taint : InterTaint
+#     if isa(typea, T)
+#         if isa(typeb, T)
+#             typea.slots ⊆ typeb.slots || return false
+#             return ⊑(widenlattice(𝕃), typea.typ, typeb.typ)
+#         end
+#         typea = typea.typ
+#     elseif isa(typeb, T)
+#         return false
+#     end
+#     return ⊑(widenlattice(𝕃), typea, typeb)
+# end
+# function Compiler.widenconst(taint::AnyTaint) 
+#     println("WIDENCONST custom")
+#     return widenconst(taint.typ)
+# end
+
+# function Compiler.abstract_eval_special_value(interp::MLIRInterpreter, @nospecialize(e), sstate::Compiler.StatementState, sv::Compiler.InferenceState)
+
+#     ret = @invoke Compiler.abstract_eval_special_value(interp::Compiler.AbstractInterpreter,e::Any, sstate::Compiler.StatementState, sv::Compiler.InferenceState)
+
+#     # if isa(e, SlotNumber) || isa(e, Argument)
+#     #     return Taint(ret, slot_id(e))
+#     # end
+#     # println("with ret: ", ret, " of type: ", typeof(ret))
+#     # println("with e: ", e, " of type: ", typeof(e))
+#     # if ret.rt isa Core.Const
+#     #     println("core: ", ret.rt, " with type: ", typeof(ret.rt))
+#     #     if ret.rt.val == SVector
+#     #         # val = ret.rt.val
+#     #         println("got SVECTOR")
+#     #         # ret.rt.val = Taint(SVector, 0)
+
+#     #         return Compiler.RTEffects(Taint(SVector, 0), ret.exct, ret.effects, ret.refinements)
+#     #     end
+#     #     # if ret.rt isa Core.Const.SVECTOR
+#     #     #     println("SV")
+#     #     # end
+#     # end
+#     # if e == Main.SVector#isa(e, SVector)
+#     #     println("LOCATED SVECTOR")
+#     # end
+#     # if isa(e, SlotNumber) || isa(e, Argument)
+#         # println("with ret: ", ret, " of type: ", typeof(ret))
+#         # println("with e: ", e, " of type: ", typeof(e))
+#         # return Taint(ret, slot_id(e))
+#     # end
+#     return ret
+# end
+
+# function Compiler.widenreturn(𝕃::InferenceLattice{<:InterTaintLattice}, @nospecialize(rt), @nospecialize(bestguess), nargs::Int, slottypes::Vector{Any}, changes::Compiler.VarTable)
+#     if isa(rt, Taint)
+#         return InterTaint(rt.typ, BitSet((id for id in rt.slots if id ≤ nargs)))
+#     end
+#     return Compiler.widenreturn(widenlattice(𝕃), rt, bestguess, nargs, slottypes, changes)
+# end
+
+# @test Compiler.tmerge(typeinf_lattice(TaintInterpreter()), Taint(Int, 1), Taint(Int, 2)) == Taint(Int, BitSet(1:2))
+
+
+

@@ -152,7 +152,9 @@ function eval_mlir(f, args...; ctx = IR.context())
 
         dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
 
+        println("Running: $dynamic_call")
         result = eval(dynamic_call)
+        println("Got original result $result")
 
         # extract intrinsic information (for 2d matrices)
         if result isa MatRes

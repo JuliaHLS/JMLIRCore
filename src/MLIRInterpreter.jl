@@ -7,6 +7,45 @@ using Core.Compiler
 
 import .Core.Compiler: CallInfo
 
+
+force_inline = Set([])
+
+macro force_inline(f)
+    # f = esc((call.head))
+    println("f: $(f)")
+    sig = f.args[1].args[1].args[1].args[1]
+    println("Got name: $(sig)")
+    # force_no_inline[sig.head] = sig.args
+    push!(force_inline, sig)
+    # println("Added: $(force_no_inline[sig.head])")
+    # return Base.annotate_meta_def_or_block(f, :mlir_inline)
+    return @inline(f)
+end
+
+
+function compare_symbols(args)
+    println("processing: $args")
+    name = first(args)
+    # if name ∉ keys(force_no_inline)
+    #     return false
+    # end
+
+    # types = force_no_inline[name]
+
+    # if length(types) != length(args[2:end])
+    #     return false
+    # end
+
+    # for (arg, parent_type) in zip(args[2:end], types)
+    #     if !(arg <: parent_type)
+    #       return false
+    #     end
+    # end
+
+    # return true
+    return name ∈ force_inline
+end
+
 """
     MLIRInterpreter <: AbstractInterpreter
 
@@ -71,6 +110,12 @@ struct NoinlineCallInfo <: CallInfo
     info::CallInfo  # wrapped call info
 end
 
+
+struct ForceinlineCallInfo <: CallInfo
+    info::CallInfo  # wrapped call info
+end
+
+
 # add edges
 Compiler.add_edges_impl(edges::Vector{Any}, info::NoinlineCallInfo) = Compiler.add_edges!(edges, info.info)
 Compiler.nsplit_impl(info::NoinlineCallInfo) = Compiler.nsplit(info.info)
@@ -80,29 +125,53 @@ Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(i
 
 
 # TODO: can I simplify this, given that they are an intrinsic_type?
-const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===), Base.:%, LinearAlgebra.Adjoint, Base.transpose, Base.adjoint, Base.:^, Base.neg_int, :"'"])
+const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===), Base.:%, LinearAlgebra.Adjoint, Base.transpose, Base.adjoint, Base.:^, Base.neg_int, :"'", Base.Math.pow_body])
+
 """ Tag abstract calls with NoinlineCallInfo when needed """
 function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
-        if first(arginfo.argtypes) isa Core.Const && first(arginfo.argtypes).val in NOINLINE_OPERATORS
-            (; rt, exct, effects, info) = ret
-            return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+        if first(arginfo.argtypes) isa Core.Const 
+            if first(arginfo.argtypes).val in NOINLINE_OPERATORS
+                (; rt, exct, effects, info) = ret
+                return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
+            elseif compare_symbols(arginfo.argtypes)
+                (; rt, exct, effects, info) = ret
+                return Compiler.CallMeta(rt, exct, effects, ForceinlineCallInfo(info))
+            end
         end
         return ret
     end
 end
 
 
+# @externa
+# function src_inlining_policy(interp::AbstractInterpreter,
+#     @nospecialize(src), @nospecialize(info::CallInfo), stmt_flag::UInt32)
+#     isa(src, OptimizationState) && (src = src.src)
+#     if isa(src, MaybeCompressed)
+#         src_inlineable = is_stmt_inline(stmt_flag) || is_inlineable(src)
+#         return src_inlineable
+#     elseif isa(src, IRCode)
+#         return true
+#     end
+#     @assert !isa(src, CodeInstance) # handled by caller
+#     return false
+# end
+
+
 """ Custom inlining policy """
 function Compiler.src_inlining_policy(interp::MLIRInterpreter,
     @nospecialize(src), @nospecialize(info::CallInfo), stmt_flag::UInt32)
 
-    # don't inline tagged items
-    if isa(info, NoinlineCallInfo)
+    println("stmt_flag: $stmt_flag")
+
+    if isa(info, NoinlineCallInfo) 
         return false
+    elseif isa(info, ForceinlineCallInfo)
+        return true
     end
     
     # else invoke default policy

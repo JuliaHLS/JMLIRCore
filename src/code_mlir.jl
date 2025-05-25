@@ -36,7 +36,7 @@ function code_mlir(f, types; ctx = IR.context())
     # end
 
     # load dialects
-    for dialect in (:func, :cf, :memref, :linalg, :tensor, :math)
+    for dialect in (:func, :cf, :memref, :linalg, :tensor, :math, :quant)
         IR.register_dialect!(IR.DialectHandle(dialect); context=ctx)
     end
 

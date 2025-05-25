@@ -6,10 +6,12 @@ module JuliaFixSSA
 using MLIR
 using MLIR.IR
 
-using MLIR.Dialects: bufferization, cf
+using MLIR.Dialects: bufferization, cf, quant
 import MLIR
 import MLIR.IR
 using MLIR.API
+
+using FixedPointNumbers
 
 
 
@@ -125,9 +127,11 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
     # create memref type arg
      memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
 
-    new_op::IR.Operation = bufferization.to_tensor(IR.result(new_ssa); result=get_ret(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
+    new_op::IR.Operation = bufferization.to_tensor(IR.result(new_ssa); result=tensor_buff_type(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
+
     
     first = IR.first_op(block)
+
     println("NEW OP: $new_op of type $(typeof(new_op))")
 
     if first != nothing
@@ -137,6 +141,16 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
     end
 
     new_ssa = IR.result(new_op)
+
+    if IR.julia_type(eltype(get_ret(original_op))) <: Fixed
+        buff_op = quant.scast(IR.result(new_op); res = get_ret(original_op))
+        IR.insert_after!(block, new_op, buff_op)
+        buff_op_ssa = IR.result(buff_op)
+
+        new_op = buff_op
+        new_ssa = buff_op_ssa
+    end
+
 
     for op in IR.OperationIterator(block)
         operands = collect_operands(op)
@@ -246,6 +260,16 @@ function collect_dominated_branches(dominating_blocks::Vector{Any})::Vector{Any}
     return target_collection
 end
 
+function tensor_buff_type(func_op)
+    storage_type = eltype(get_ret(func_op))
+    dim = size(get_ret(func_op))
+    if IR.julia_type(storage_type) <: Fixed
+        return IR.TensorType(dim, IR.Type(Int32))
+    else
+        return IR.TensorType(dim, storage_type)
+    end
+end
+
 
 function fix_ssa_dominating_block!(func_op::IR.Operation, dom_block::IR.Block)::Union{IR.Operation, Nothing}
     new_op = func_op
@@ -256,19 +280,38 @@ function fix_ssa_dominating_block!(func_op::IR.Operation, dom_block::IR.Block)::
 
         if check_name(op, "cf.br") || check_name(op, "cf.cond_br")
             shape = [size(get_ret((func_op)))...]
-            memref_type_with_dims = IR.MemRefType(eltype(get_ret(func_op)), shape, IR.Attribute(0))
-            buff_op = bufferization.to_memref(IR.result(func_op); memref=memref_type_with_dims)
+
+            storage_type = eltype(get_ret(func_op))
+
+            buff_op = func_op
+            buff_op_ssa = IR.result(func_op)
+
+            if IR.julia_type(storage_type) <: Fixed
+
+                dim = size(get_ret(func_op))
+
+                buff_op = quant.scast(IR.result(func_op); res = IR.TensorType(dim, IR.Type(Int32)))
+                IR.insert_after!(dom_block, func_op, buff_op)
+                buff_op_ssa = IR.result(buff_op)
+            end
+
+            memref_type_with_dims = IR.MemRefType(eltype(get_ret(buff_op)), shape, IR.Attribute(0))
+
+            
+
+            buff_op = bufferization.to_memref(buff_op_ssa; memref=memref_type_with_dims)
             IR.insert_before!(dom_block, op, buff_op)
 
             return buff_op
         end
     end
 end
-
 end
 
 """ High-level Op lowering interface (External Use) """
 module JuliaLowerOp
+
+using FixedPointNumbers
 
 using MLIR.IR
 using MLIR.API
@@ -276,7 +319,7 @@ using MLIR.API
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa, tensor, math, scf
+using MLIR.Dialects: arith, tosa, tensor, math, scf, quant
 
 export lower_op_to_mlir
 
@@ -288,7 +331,8 @@ module _JuliaPassHelpers
     using MLIR.IR
     import MLIR.IR
     using MLIR.API
-    using MLIR.Dialects: arith, tosa, tensor, math, scf
+    using MLIR.Dialects: arith, tosa, tensor, math, scf, quant
+    using FixedPointNumbers
 
     export unroll_operation!
     export unroll_operation_mat!
@@ -426,7 +470,7 @@ module _JuliaPassHelpers
             else
                 error("Unrecognized tensor type: $(IR.julia_type(eltype(type)))")
             end
-        elseif IR.julia_type(type) <: Integer || IR.julia_type(type) <: AbstractFloat
+        elseif IR.julia_type(type) <: Integer || IR.julia_type(type) <: Fixed || IR.julia_type(type) <: AbstractFloat
             return IR.julia_type(type)
         else 
             error("Received unrecognized type when Lowering julia to MLIR, Type: $(type)")
@@ -444,6 +488,27 @@ module _JuliaPassHelpers
         end
     end
 
+    function treat_integer(type)
+        return underlying_type(type) <: Integer
+    end
+
+    function fix_quant!(block, op, operands, types)
+        for (i, operand) in enumerate(operands)
+            if IR.julia_type(types[i]) <: Fixed
+                storage_type = first(IR.julia_type(types[i]).parameters)
+
+                new_op = quant.scast(operand;res= IR.Type(storage_type))
+                IR.insert_before!(block, op, new_op)
+                new_op_res = IR.result(new_op)
+
+                operands[i] = new_op_res
+                types[i] = IR.Type(storage_type)
+            end
+        end
+
+        return operands, types
+    end
+
     # TODO: turn into proper dynamic dispatch
     """ lower julia cmp to arith cmp """
     function lower_cmp!(op::IR.Operation, block, replace_ops)
@@ -455,9 +520,11 @@ module _JuliaPassHelpers
 
         attributes = collect_attributes(op)
         pred = IR.attr(op, "predicate")
+        println("operands $operands")
+        operands, raw_types = fix_quant!(block, op, operands, raw_types)
 
         # TODO: add asserts
-        if underlying_type(raw_types[1]) <: Integer && underlying_type(raw_types[2]) <: Integer 
+        if treat_integer(raw_types[1]) && treat_integer(raw_types[2])
             new_op = arith.cmpi(operands...; result=IR.Type(Bool), predicate=julia_predicate_to_arith(pred, types[1]))
         elseif underlying_type(raw_types[1]) <: AbstractFloat && underlying_type(raw_types[2]) <: AbstractFloat
             new_op = arith.cmpf(operands...; result=IR.Type(Bool), predicate=julia_predicate_to_arith(pred, types[1]))
@@ -469,21 +536,34 @@ module _JuliaPassHelpers
         push!(replace_ops, [op, new_op])
     end
 
+    function check_integer(type)
+        return type <: Integer || type <: Fixed
+    end
 
     """ unroll n-way julia operation into a tree of operations """
     function unroll_operation!(op::IR.Operation, block, fn_int::Function, fn_float::Function, replace_ops)
         operands = collect_operands(op)
-        types = IR.julia_type.(IR.type.(operands))
+        raw_types = IR.type.(operands)
+        types = IR.julia_type.(raw_types)
 
         ret = IR.type.(collect_results(op))[1]
 
+
+        if IR.julia_type(ret) <: Fixed
+            ret = IR.Type(Int32)
+        end
+
         prev_op = op
-        prev_ref = operands[1]
-        prev_val = operands[1]
 
         replaced = false
 
         println("processing: $op with ret type: $types")
+
+        operands, raw_types = fix_quant!(block, op, operands, raw_types)
+        types = IR.julia_type.(raw_types)
+
+        prev_ref = operands[1]
+        prev_val = operands[1]
 
         # edge-case where only one argument is given, there exists an implicit zero
         if length(operands[2:end]) == 0
@@ -493,7 +573,7 @@ module _JuliaPassHelpers
             IR.insert_before!(block, op, zero_op)
             zero_op_ref = IR.result(zero_op)
 
-            if types[1] <: Integer
+            if check_integer(types[1])
                 new_op = fn_int(zero_op_ref, prev_val; result=ret)
                 IR.insert_after!(block, prev_op, new_op)
 
@@ -511,7 +591,7 @@ module _JuliaPassHelpers
         end
 
         for new_ref in operands[2:end]
-            if types[1] <: Integer && types[2] <: Integer
+            if check_integer(types[1]) && check_integer(types[1])
                 new_op = fn_int(prev_val, new_ref; result=ret)
                 IR.insert_after!(block, prev_op, new_op)
                 prev_op = new_op
@@ -531,6 +611,12 @@ module _JuliaPassHelpers
                 println("GOT TYPES: $types")
             end
 
+        end
+
+        if IR.julia_type(IR.type.(collect_results(op))[1]) <: Fixed
+            new_op = quant.scast(IR.result(prev_op); res = IR.type.(collect_results(op))[1])
+            IR.insert_after!(block, prev_op, new_op)
+            prev_op = new_op 
         end
 
         if replaced
@@ -763,6 +849,12 @@ function lower_op_to_mlir(op_name::Val{:(julia_not_int)}, block::IR.Block, op::I
     # lower not to xori
     xori = arith.xori(operands[1], IR.result(bitmask))
     IR.insert_before!(block, op, xori)
+
+    if IR.julia_type(ret) <: Fixed
+        new_op = quant.scast(IR.result(xori); res=ret)
+        IR.insert_after!(block, xori, new_op)
+        xori = new_op
+    end
 
     push!(replace_ops, [op, xori])
 

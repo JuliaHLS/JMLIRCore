@@ -54,7 +54,26 @@ end
 
 function IR.Type(T::Core.Type{<:Fixed}; context::IR.Context=context())
     println("Sizeof: $(sizeof(T) * 8)")
-    return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
+    container, frac_bits = T.parameters
+    scale = 1.0 / (2.0 ^ frac_bits)
+    zp = 0.0
+    bw = 32
+
+    flag = MLIR.API.mlirQuantizedTypeGetSignedFlag()
+
+    storage_type = IR.Type(container)
+    expressed_type = IR.Type(Float32)
+
+    if container <: Signed 
+        smin = -Int(1 << (bw - 1))
+        smax =  Int(1 << (bw - 1)) - 1
+    else
+        smin = 0
+        smax = Int(1 << bw) - 1
+    end
+
+    # return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
+    return IR.Type(MLIR.API.mlirUniformQuantizedTypeGet(flag,storage_type, expressed_type, scale, zp, smin, smax))
 end
 
 get_op_with_ownership(module_::IR.Module) = IR.Operation(MLIR.API.mlirModuleGetOperation(module_), true)

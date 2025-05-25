@@ -8,6 +8,6 @@ ctx = IR.Context()
 include("eval_mlir.jl")
 
 # export code_mlir
-export @code_mlir, code_mlir, @eval_mlir, code_mlir
+export @code_mlir, code_mlir, @eval_mlir, code_mlir, @force_inline
 
 end

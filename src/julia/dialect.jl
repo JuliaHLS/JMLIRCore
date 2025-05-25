@@ -7,7 +7,7 @@ using MLIR.IR
 # Generate Arithmetic Operators
 for f in (:add, :sub, :mul, :div, :rem, :pow, :not_int)
     @eval function $f(
-        operands::Value...; result=nothing::Union{Nothing,IR.Type}, output=nothing::Union{Nothing,IR.Type}, location=Location()
+                      operands::Value...; result=nothing::Union{Nothing,IR.Type}, output=nothing::Union{Nothing,IR.Type}, quant=nothing::Union{Nothing, IR.NamedAttribute}, location=Location()
     )
         _results = IR.Type[]
         _operands = Value[operands...]
@@ -17,6 +17,7 @@ for f in (:add, :sub, :mul, :div, :rem, :pow, :not_int)
         @assert !(!isnothing(result) && !isnothing(output))
         !isnothing(result) && push!(_results, result)
         !isnothing(output) && push!(_results, output)
+        !isnothing(quant) && push!(_attributes, quant)
 
         return IR.create_operation(
             $(string("julia.", f)),

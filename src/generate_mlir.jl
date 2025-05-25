@@ -2,6 +2,7 @@ using MLIR.Dialects: arith, func, cf, memref, linalg, tosa, tensor, math
 using MLIR
 using MLIR.IR
 using LinearAlgebra
+using FixedPointNumbers
 
 include("julia/dialect.jl")
 using .julia
@@ -70,27 +71,32 @@ end
 # manually
 
 @inline function single_op_wrapper_with_result(fop)
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
         push!(block, fop(args...; result, location))
 end
 
+@inline function single_op_wrapper_with_result_with_quant(fop)
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
+        push!(block, fop(args...; result, quant, location))
+end
+
 @inline function single_op_wrapper_out_is_result(fop)
-        return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+        return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
         push!(block, fop(args...; out=result, location))
 end
 
 @inline function single_op_wrapper_no_result(fop)
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
         push!(block, fop(args...; location))
 end
 
 @inline function single_op_wrapper_vector_args(fop)
-    return (block::MLIR.IR.Block, args::Vector{Vector{Value}}; result, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{Vector{Value}}; result, quant=nothing, location=Location()) ->
         push!(block, fop(args...; result, location))
 end
 
 @inline function single_op_wrapper_output_is_result(fop)
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
         push!(block, fop(args...; output=result, location))
 end
 
@@ -107,8 +113,12 @@ end
 
 ### ARITHMETIC ###
 function generate_mlir(::Val{:+}, rettype::Type{<:Any})
-    println("here")
-    return single_op_wrapper_with_result(julia.add)
+    return single_op_wrapper_with_result_with_quant(julia.add)
+end
+
+# NOP for fixed-point
+function generate_mlir(::Val{:(getfield)}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result_with_quant(julia.add)
 end
 
 function generate_mlir(::Val{:-}, rettype::Type{<:Any})
@@ -116,7 +126,7 @@ function generate_mlir(::Val{:-}, rettype::Type{<:Any})
 end
 
 function generate_mlir(::Val{:*}, rettype::Type{<:Any})
-    return single_op_wrapper_with_result(julia.mul)
+    return single_op_wrapper_with_result_with_quant(julia.mul)
 end
 
 function generate_mlir(::Val{:/}, rettype::Type{<:Any})
@@ -128,6 +138,10 @@ function generate_mlir(::Val{:rem}, rettype::Type{<:Any})
 end
 
 function generate_mlir(::Val{:^}, rettype::Type{<:Real})
+    return single_op_wrapper_with_result(julia.pow)
+end
+
+function generate_mlir(::Val{:(pow_body)}, rettype::Type{<:Real})
     return single_op_wrapper_with_result(julia.pow)
 end
 
@@ -165,6 +179,19 @@ end
 
 function generate_mlir(::Val{:(!=)}, rettype::Type{<:Any})
     return single_op_wrapper_no_result(cmpi_pred(julia.predicate.ne))
+end
+
+function generate_mlir(::Val{:>>}, rettype::Type{<:Unsigned})
+    return single_op_wrapper_out_is_result(arith.shrui)
+end
+
+function generate_mlir(::Val{:>>}, rettype::Type{<:Union{Signed, Fixed}})
+    return single_op_wrapper_with_result(arith.shrsi)
+end
+
+# TODO: check
+function generate_mlir(::Val{:<<}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(arith.shli)
 end
 
 #### SPECIALISED OPERATIONS ####
@@ -217,13 +244,17 @@ function generate_mlir(::Val{:(new)}, rettype::Type{<:LinearAlgebra.Adjoint{T, M
     return single_op_wrapper_output_is_result(julia.mat_adjoint)
 end
 
+function generate_mlir(::Val{:(new)}, rettype::Type{<:Fixed})
+    return single_op_wrapper_with_result(julia.add)
+end
+
 function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant, location=Location()) ->
     push!(block, julia.mat_setindex(args; location))
 end
 
 function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant, location=Location()) ->
     push!(block, julia.mat_getindex(args; result=result, location))
 end
 

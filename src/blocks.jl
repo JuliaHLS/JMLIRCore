@@ -1,8 +1,11 @@
 include("nodes.jl")
+include("common_types.jl")
 
 ## Basic Block Preprocessing
 using Base.Compiler: FixedNode
 using FixedPointNumbers
+
+using MLIR.Dialects: quant
 
 "Generates a block argument for each phi node present in the block."
 function prepare_block(ir, bb)
@@ -50,12 +53,24 @@ function get_value(x, context::Context, blocks::Blocks)
     elseif x isa Core.Argument
         IR.argument(blocks.entry_block, x.n - 1)
     elseif x isa ScalarTypes 
-        x = recast_fixed(x)
-        IR.result(push!(blocks.current_block, arith.constant(; value=x)))
+        recast_x = recast_fixed(x)
+        ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=recast_x)))
+        println("SCALAR")
+
+#         if typeof(x) <: Fixed
+#             ssa_res = IR.result(push!(blocks.current_block, MLIR.Dialects.quant.scast(ssa_res; res=IR.Type(typeof(x)))))
+#         end
+
+        return ssa_res
     elseif x isa Tuple       # process all tuple types
         results::Vector{IR.Value} = []
         for init_val ∈ collect(x)
-            ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=init_val)))
+            recast_init_val = recast_fixed(init_val)
+            ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=recast_init_val)))
+            # ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=init_val)))
+            # if typeof(init_val) <: Fixed
+            #     ssa_res = IR.result(push!(blocks.current_block, MLIR.Dialects.quant.scast(ssa_res; res=IR.Type(typeof(init_val)))))
+            # end
             push!(results, ssa_res)
         end
         results::Vector{IR.Value}
@@ -69,6 +84,7 @@ function preprocess_code_blocks(ir, types)
   @assert first(ir.argtypes) isa Core.Const
 
   # preprocess all blocks
+  println("processing $(ir.cfg.blocks)")
   blocks = [prepare_block(ir, bb) for bb in ir.cfg.blocks]
 
   # preprocess first block
