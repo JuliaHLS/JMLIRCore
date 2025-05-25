@@ -84,7 +84,6 @@ function preprocess_code_blocks(ir, types)
   @assert first(ir.argtypes) isa Core.Const
 
   # preprocess all blocks
-  println("processing $(ir.cfg.blocks)")
   blocks = [prepare_block(ir, bb) for bb in ir.cfg.blocks]
 
   # preprocess first block

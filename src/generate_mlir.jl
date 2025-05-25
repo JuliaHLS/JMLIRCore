@@ -113,12 +113,12 @@ end
 
 ### ARITHMETIC ###
 function generate_mlir(::Val{:+}, rettype::Type{<:Any})
-    return single_op_wrapper_with_result_with_quant(julia.add)
+    return single_op_wrapper_with_result(julia.add)
 end
 
 # NOP for fixed-point
 function generate_mlir(::Val{:(getfield)}, rettype::Type{<:Any})
-    return single_op_wrapper_with_result_with_quant(julia.add)
+    return single_op_wrapper_with_result(julia.add)
 end
 
 function generate_mlir(::Val{:-}, rettype::Type{<:Any})
@@ -126,7 +126,7 @@ function generate_mlir(::Val{:-}, rettype::Type{<:Any})
 end
 
 function generate_mlir(::Val{:*}, rettype::Type{<:Any})
-    return single_op_wrapper_with_result_with_quant(julia.mul)
+    return single_op_wrapper_with_result(julia.mul)
 end
 
 function generate_mlir(::Val{:/}, rettype::Type{<:Any})
@@ -249,12 +249,12 @@ function generate_mlir(::Val{:(new)}, rettype::Type{<:Fixed})
 end
 
 function generate_mlir(::Val{:(setindex!)}, rettype::Type{<:Any})
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
     push!(block, julia.mat_setindex(args; location))
 end
 
 function generate_mlir(::Val{:(getindex)}, rettype::Type{<:Any})
-    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant, location=Location()) ->
+    return (block::MLIR.IR.Block, args::Vector{MLIR.IR.Value}; result, quant=nothing, location=Location()) ->
     push!(block, julia.mat_getindex(args; result=result, location))
 end
 

@@ -1,5 +1,16 @@
 using StaticArrays
 
+using FixedPointNumbers
+using MLIR
+using MLIR.IR
+using Test
+
+function IR.Type(T::Core.Type{<:Fixed}; context::IR.Context=context())
+    return IR.Type(MLIR.API.mlirIntegerTypeGet(context, sizeof(T) * 8))
+end
+
+
+
 @inline function cordic_gain(M::Integer)
     K = 1.0
     for i in 0:M-1
@@ -7,22 +18,20 @@ using StaticArrays
     end
     return K
 end
-import Base: >>, <<, *
 
-function <<(x::Fixed{T,F}, s::Integer) where {T,F}
-    raw = x.i << s
-    # the `true` flag means “raw bits already in Q-F format”
-    Fixed{T,F}(raw, true)
+
+import Base: *
+@force_inline function Base.:*(x::Fixed{T,Q}, y::Fixed{T,Q})::Fixed{T,Q} where {T<:Integer,Q}
+    raw = reinterpret(T, x) * reinterpret(T, y)
+    raw2 = raw >> Q
+    # println("GOT RAW: $raw2")
+    return reinterpret(Fixed{T,Q},raw2)
 end
 
-function >>(x::Fixed{T,F}, s::Integer) where {T,F}
-   raw = x.i >> s
-   Fixed{T,F}(raw, true)
-end
-
-@inline function Base.:*(x::Fixed{T,F}, y::Fixed{T,F})::Fixed{T, F} where {T,F}
-    res = (x + y)::Fixed{T,F}
-    return res::Fixed{T, F}
+@force_inline function Base.:*(x::T, y::Fixed{T,Q})::Fixed{T,Q} where {T<:Integer,Q}
+    raw = (x << Q) * reinterpret(T, y)
+    raw2 = raw >>> Q
+    return reinterpret(Fixed{T,Q},raw2)
 end
 
 function cordic_int(theta::Fixed{T,N}, K::Fixed{T, N}, iterations::Int) where {T, N}
@@ -70,7 +79,7 @@ function cordic_int(theta::Fixed{T,N}, K::Fixed{T, N}, iterations::Int) where {T
         # y_new = (x >> shift)
         # println(x_new)
         # z_new = z - di * angles[i]
-        z_new = di * angles[i]::Fixed{T, N}
+        z_new = di * angles[i]
 
         # x, y, z = x_new, y_new, z_new
         # x = x_new

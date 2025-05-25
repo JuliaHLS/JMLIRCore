@@ -11,38 +11,16 @@ import .Core.Compiler: CallInfo
 force_inline = Set([])
 
 macro force_inline(f)
-    # f = esc((call.head))
-    println("f: $(f)")
-    sig = f.args[1].args[1].args[1].args[1]
-    println("Got name: $(sig)")
-    # force_no_inline[sig.head] = sig.args
-    push!(force_inline, sig)
-    # println("Added: $(force_no_inline[sig.head])")
-    # return Base.annotate_meta_def_or_block(f, :mlir_inline)
+    sig = f.args[1].args[1].args[1].args[1].args
+    push!(force_inline, eval(last(sig)))
     return @inline(f)
 end
 
 
 function compare_symbols(args)
-    println("processing: $args")
-    name = first(args)
-    # if name ∉ keys(force_no_inline)
-    #     return false
-    # end
+    # println("processing: $args")
+    name = Symbol(first(args).val)
 
-    # types = force_no_inline[name]
-
-    # if length(types) != length(args[2:end])
-    #     return false
-    # end
-
-    # for (arg, parent_type) in zip(args[2:end], types)
-    #     if !(arg <: parent_type)
-    #       return false
-    #     end
-    # end
-
-    # return true
     return name ∈ force_inline
 end
 
@@ -123,6 +101,12 @@ Compiler.getsplit_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getsplit(inf
 Compiler.getresult_impl(info::NoinlineCallInfo, idx::Int) = Compiler.getresult(info.info, idx)
 
 
+Compiler.add_edges_impl(edges::Vector{Any}, info::ForceinlineCallInfo) = Compiler.add_edges!(edges, info.info)
+Compiler.nsplit_impl(info::ForceinlineCallInfo) = Compiler.nsplit(info.info)
+Compiler.getsplit_impl(info::ForceinlineCallInfo, idx::Int) = Compiler.getsplit(info.info, idx)
+Compiler.getresult_impl(info::ForceinlineCallInfo, idx::Int) = Compiler.getresult(info.info, idx)
+
+
 
 # TODO: can I simplify this, given that they are an intrinsic_type?
 const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===), Base.:%, LinearAlgebra.Adjoint, Base.transpose, Base.adjoint, Base.:^, Base.neg_int, :"'", Base.Math.pow_body])
@@ -133,13 +117,15 @@ function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgIn
     ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
+        println("HAS:: $(arginfo)")
         if first(arginfo.argtypes) isa Core.Const 
-            if first(arginfo.argtypes).val in NOINLINE_OPERATORS
-                (; rt, exct, effects, info) = ret
-                return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
-            elseif compare_symbols(arginfo.argtypes)
+            if compare_symbols(arginfo.argtypes)
+                println("force inlining")
                 (; rt, exct, effects, info) = ret
                 return Compiler.CallMeta(rt, exct, effects, ForceinlineCallInfo(info))
+            elseif first(arginfo.argtypes).val in NOINLINE_OPERATORS
+                (; rt, exct, effects, info) = ret
+                return Compiler.CallMeta(rt, exct, effects, NoinlineCallInfo(info))
             end
         end
         return ret
@@ -165,8 +151,6 @@ end
 """ Custom inlining policy """
 function Compiler.src_inlining_policy(interp::MLIRInterpreter,
     @nospecialize(src), @nospecialize(info::CallInfo), stmt_flag::UInt32)
-
-    println("stmt_flag: $stmt_flag")
 
     if isa(info, NoinlineCallInfo) 
         return false

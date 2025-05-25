@@ -122,24 +122,17 @@ function eval_mlir(f, args...; ctx = IR.context())
         IR.enable_verifier!(pm, true)
         IR.verifyall(mod)
 
-        println("Processing mod: $mod with name $(String(nameof(f)))")
-
         # create the jit (locally)
         jit = IR.ExecutionEngine(mod, 0)
+        GC.@preserve jit begin
         fptr = IR.lookup(jit, String(nameof(f)))
 
-        println("args: $(args[2:end])")
-        for arg in args
-            println("has arg: $arg")
-        end
         new_args = recast_arguments.(args[2:end])
-        println("got new args: $new_args")
         # args[2:end] = new_args #recast_arguments.(args[2:end])
 
         expanded_args = eval(Expr(:tuple, new_args...))
         processed_arg_types_tuple = map(arg -> Core.Typeof(eval(arg)), new_args)
         expanded_types = Expr(:tuple, processed_arg_types_tuple...)
-        println("Expanded types: $expanded_types")
 
         original_ret = ret
         if ret <: AbstractArray
@@ -148,13 +141,11 @@ function eval_mlir(f, args...; ctx = IR.context())
             ret = first(ret.parameters)
         end
 
-        println("new ret type: $ret")
 
         dynamic_call = :(ccall($fptr, $ret, $(expanded_types), $(expanded_args...)))
 
-        println("Running: $dynamic_call")
         result = eval(dynamic_call)
-        println("Got original result $result")
+        end
 
         # extract intrinsic information (for 2d matrices)
         if result isa MatRes
