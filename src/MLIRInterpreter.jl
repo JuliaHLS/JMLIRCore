@@ -1,6 +1,7 @@
 include("compiler.jl")
 include("overlays.jl")
 include("intrinsics.jl")
+include("force_inline.jl")
 
 import Core
 using Core.Compiler
@@ -8,18 +9,18 @@ using Core.Compiler
 import .Core.Compiler: CallInfo
 
 
-force_inline = Set([])
-
-macro force_inline(f)
-    sig = f.args[1].args[1].args[1].args[1].args
-    push!(force_inline, eval(last(sig)))
-    return @inline(f)
-end
-
-
 function compare_symbols(args)
     # println("processing: $args")
-    name = Symbol(first(args).val)
+    name = (first(args).val)
+    # println("Checking: $name")
+    for arg in args[2:end]
+        # println("processing $arg with type: $(typeof(arg))")
+        if arg isa DataType && !(arg <: Fixed)
+            # println("EXITED")
+            return false
+        end
+    end
+    name = Symbol(name)
 
     return name ∈ force_inline
 end
@@ -117,10 +118,10 @@ function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgIn
     ret = @invoke Compiler.abstract_call(interp::Compiler.AbstractInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)
 
     return Compiler.Future{Compiler.CallMeta}(ret, interp, sv) do ret, interp, sv
-        println("HAS:: $(arginfo)")
+        # println("HAS:: $(arginfo)")
         if first(arginfo.argtypes) isa Core.Const 
             if compare_symbols(arginfo.argtypes)
-                println("force inlining")
+                # println("force inlining $(arginfo.argtypes)")
                 (; rt, exct, effects, info) = ret
                 return Compiler.CallMeta(rt, exct, effects, ForceinlineCallInfo(info))
             elseif first(arginfo.argtypes).val in NOINLINE_OPERATORS
@@ -194,4 +195,6 @@ function Core.Compiler.finish(interp::MLIRInterpreter, opt::Core.Compiler.Optimi
 
     return nothing
 end
+
+
 

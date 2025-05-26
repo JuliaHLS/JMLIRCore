@@ -930,6 +930,20 @@ function lower_op_to_mlir(op_name::Val{:(julia_mat_adjoint)}, block::IR.Block, o
 
     target_transformation = collect(ntuple(i -> findfirst(==(size(ret)[i]), size(ops)), 3))
     target_transformation = target_transformation .- 1
+
+    if size(ret) == size(ops)
+        target_transformation = reverse(target_transformation)
+
+        for i in 2:length(target_transformation)
+            if target_transformation[i] != 0
+                target_transformation[i] += 1
+            end
+        end 
+
+
+        target_transformation = reverse(target_transformation)
+    end
+
     target_array = IR.NamedAttribute("perms", IR.DenseArrayAttribute(Int32.(target_transformation)::Vector{Int32}))
 
     # create transpose op

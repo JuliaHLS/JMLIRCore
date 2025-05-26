@@ -157,4 +157,60 @@ function IR.pass_run(::FixImplicitControlFlow, func_op)
     JuliaFixSSA.fix_implicit_blocks!(implicit_blocks)
 end
 
+struct FixTensorInstantiation <: IR.AbstractPass end
+
+IR.opname(::FixTensorInstantiation) = "func.func"
+
+
+function IR.pass_run(::FixTensorInstantiation, func_op)
+    println("Running FixTensorInstantiation")
+    replace_ops = []
+
+    for region in IR.RegionIterator(func_op)
+        for block in IR.BlockIterator(region)
+            for op in IR.OperationIterator(block)
+                op_name = name(op), "." => "_"
+                if JuliaFixSSA.check_name(op, "arith.constant")
+                    op_attr = IR.attr(op, "value") 
+                    if op_attr != nothing
+                        if IR.isdenseelements(op_attr)
+                            println("arith dense found $op")
+
+                            collected_args = []
+                            for i in 1:length(op_attr)
+                                print("Got attr: $op_attr")
+                                println("h")
+                                println("Got val: $(API.mlirDenseElementsAttrGetInt64Value(op_attr, i-1))")
+                                push!(collected_args, API.mlirDenseElementsAttrGetInt64Value(op_attr, i-1))
+                            end
+
+                            println("Collected the arguments: $collected_args of type: $(typeof.(collected_args))")
+
+                            # val_array = get_value.(collected_args)
+
+                            ir_val_array::Vector{Value} = []
+                            for val in collected_args
+                                ssa_res = IR.result(IR.insert_before!(block, op, arith.constant(; value=val)))
+                                push!(ir_val_array, ssa_res)
+                            end
+
+                            # call matrix instantiator
+                            ret = IR.type.(JuliaFixSSA.collect_results(op))[1]
+
+                            new_op = tensor.from_elements(ir_val_array, result=ret)
+                            new_op_res= IR.insert_after!(block, op, new_op)
+
+                            push!(replace_ops, [op, new_op])
+
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    rewrite_references(replace_ops)
+
+end
+
 end

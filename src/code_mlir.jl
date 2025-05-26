@@ -141,7 +141,7 @@ function code_mlir(f, types; ctx = IR.context())
         opm = IR.OpPassManager(pm)
 
         IR.add_pipeline!(opm,
-                         "canonicalize{region-simplify=normal},\
+                         "canonicalize{region-simplify=disabled},\
                          cse,\
                          loop-invariant-code-motion,\
                          sroa,\
@@ -150,7 +150,10 @@ function code_mlir(f, types; ctx = IR.context())
                          symbol-dce,\
                          fold-memref-alias-ops,\
                          control-flow-sink"
+
                         )
+        # IR.run!(pm, mod)
+        run!(JuliaPasses.FixTensorInstantiation(), mod, ctx)
         
         println("Lowered and optimised MLIR: $mod")
     end
