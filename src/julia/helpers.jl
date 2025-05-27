@@ -158,15 +158,15 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
     end
 
     # write back to give meaningful modification
-     # memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
-     # convert_to_memref_op = bufferization.to_memref(new_ssa; memref=get_ret(original_ssa))
-    # IR.insert_after!(block, new_op, convert_to_memref_op)
+     memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
+     convert_to_memref_op = bufferization.to_memref(new_ssa; memref=get_ret(original_ssa))
+    IR.insert_after!(block, new_op, convert_to_memref_op)
 
     # create meaninful write
     # println("source $original_ssa")
     # println("target $")
-    # copy_expr = memref.copy(IR.result(convert_to_memref_op), IR.result(original_ssa))
-    # IR.insert_after!(block, convert_to_memref_op, copy_expr)
+    copy_expr = memref.copy(IR.result(convert_to_memref_op), IR.result(original_ssa))
+    IR.insert_after!(block, convert_to_memref_op, copy_expr)
 
 end
 

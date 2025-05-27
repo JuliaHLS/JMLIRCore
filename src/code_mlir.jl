@@ -140,19 +140,19 @@ function code_mlir(f, types; ctx = IR.context())
         pm = IR.PassManager()
         opm = IR.OpPassManager(pm)
 
-        # IR.add_pipeline!(opm,
-        #                  "cse,\
-        #                  loop-invariant-code-motion,\
-        #                  sroa,\
-        #                  sccp,\
-        #                  remove-dead-values,\
-        #                  symbol-dce,\
-        #                  fold-memref-alias-ops,\
-        #                  control-flow-sink"
-
-        #                 )
-        # IR.run!(pm, mod)
-        # run!(JuliaPasses.FixTensorInstantiation(), mod, ctx)
+        IR.add_pipeline!(opm,
+                         "canonicalize{region-simplify=normal},\
+                         cse,\
+                         loop-invariant-code-motion,\
+                         sroa,\
+                         sccp,\
+                         remove-dead-values,\
+                         symbol-dce,\
+                         fold-memref-alias-ops,\
+                         control-flow-sink"
+                        )
+        IR.run!(pm, mod)
+        run!(JuliaPasses.FixTensorInstantiation(), mod, ctx)
         
         println("Lowered and optimised MLIR: $mod")
     end
