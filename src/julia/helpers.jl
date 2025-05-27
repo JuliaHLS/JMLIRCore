@@ -6,7 +6,7 @@ module JuliaFixSSA
 using MLIR
 using MLIR.IR
 
-using MLIR.Dialects: bufferization, cf, quant
+using MLIR.Dialects: bufferization, cf, quant, memref
 import MLIR
 import MLIR.IR
 using MLIR.API
@@ -89,7 +89,7 @@ function fix_ssa_refs!(block, op, original_op, new_op, new_ssa)
             !isnothing(get_ret(op)) || continue
             IR.operand!(op, i, new_ssa)
 
-            if (IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(original_op)) == size(get_ret(new_op)))
+            if (IR.julia_type(get_ret(op)) <: AbstractArray && size(get_ret(op)) == size(get_ret(new_op)))
                 new_ssa = IR.result(op)
                 new_op = op
 
@@ -124,6 +124,7 @@ function fix_ssa_refs!(block, op, original_op, new_op, new_ssa)
 end
 
 function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa::Operation)
+    original_ssa = new_ssa
     # create memref type arg
      memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
 
@@ -131,8 +132,6 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
 
     
     first = IR.first_op(block)
-
-    println("NEW OP: $new_op of type $(typeof(new_op))")
 
     if first != nothing
         IR.insert_before!(block, first, new_op)
@@ -157,6 +156,18 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
 
         new_op, new_ssa = fix_ssa_refs!(block, op, original_op, new_op, new_ssa) 
     end
+
+    # write back to give meaningful modification
+     # memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
+     # convert_to_memref_op = bufferization.to_memref(new_ssa; memref=get_ret(original_ssa))
+    # IR.insert_after!(block, new_op, convert_to_memref_op)
+
+    # create meaninful write
+    # println("source $original_ssa")
+    # println("target $")
+    # copy_expr = memref.copy(IR.result(convert_to_memref_op), IR.result(original_ssa))
+    # IR.insert_after!(block, convert_to_memref_op, copy_expr)
+
 end
 
 
@@ -880,22 +891,32 @@ end
 
 function lower_op_to_mlir(op_name::Val{:(julia_mat_inst)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)
-
     ret = IR.type.(collect_results(op))[1]
 
-    # reorder the input matrix based on the input dimensions
-    dim1, dim2, dim3 = size(ret)
+    if length(operands) > 0
+        # reorder the input matrix based on the input dimensions
+        dim1, dim2, dim3 = size(ret)
 
-    reshaped_operands = reshape(operands, dim1, dim2, dim3)
-    reshaped_operands = permutedims(reshaped_operands, (3, 2, 1))
-    col_major_operands = vec(reshaped_operands)
+        reshaped_operands = reshape(operands, dim1, dim2, dim3)
+        reshaped_operands = permutedims(reshaped_operands, (3, 2, 1))
+        col_major_operands = vec(reshaped_operands)
 
-    # fix tensor arguments
-    if IR.istensor(ret)
-        new_op = tensor.from_elements(col_major_operands, result=ret)
-        IR.insert_after!(block, op, new_op)
+        # fix tensor arguments
+        if IR.istensor(ret)
+            new_op = tensor.from_elements(col_major_operands, result=ret)
+            IR.insert_after!(block, op, new_op)
+        else
+            error("Error: incorrect types used for julia.mat_inst")
+        end
     else
-        error("Error: incorrect types used for julia.mat_inst")
+        if IR.istensor(ret)
+            static_dims::Vector{Value} = []
+            # fully static shape
+            new_op = tensor.empty(static_dims, result=ret)
+            IR.insert_after!(block, op, new_op)
+        else
+            error("Error: incorrect types used for julia.mat_inst")
+        end
     end
 
     push!(replace_ops, [op, new_op])

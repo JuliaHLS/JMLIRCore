@@ -92,6 +92,28 @@ function mat_inst(elements::Array{Value}; result::IR.Type, location=Location())
     )
 end
 
+function mat_inst(; result::IR.Type, location=Location())
+    _results = IR.Type[result,]
+    _operands = Value[]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "julia.mat_inst",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
+
+
+
 # only called for vectors (done in-place by julia otherwise)
 function mat_adjoint(input1::Value; output::IR.Type, location=Location())
     _results = IR.Type[output,]

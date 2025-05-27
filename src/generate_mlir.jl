@@ -91,8 +91,13 @@ end
 end
 
 @inline function single_op_wrapper_vector_args(fop)
-    return (block::MLIR.IR.Block, args::Vector{Vector{Value}}; result, quant=nothing, location=Location()) ->
-        push!(block, fop(args...; result, location))
+    function (block::MLIR.IR.Block, args; result, quant=nothing, location=Location())
+        if args isa Vector{Vector{Value}}
+            push!(block, fop(args...; result, location))
+        else
+            push!(block, fop(;result, location))
+        end
+    end
 end
 
 @inline function single_op_wrapper_output_is_result(fop)

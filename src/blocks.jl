@@ -48,7 +48,9 @@ end
 # get value
 function get_value(x, context::Context, blocks::Blocks)
     if x isa Core.SSAValue
+        println("Processing SSA Value")
         @assert isassigned(context.values, x.id) "value $x was not assigned"
+        println("Collecting SSA Value")
         context.values[x.id]
     elseif x isa Core.Argument
         IR.argument(blocks.entry_block, x.n - 1)
@@ -57,9 +59,10 @@ function get_value(x, context::Context, blocks::Blocks)
         ssa_res = IR.result(push!(blocks.current_block, arith.constant(; value=recast_x)))
         println("SCALAR")
 
-#         if typeof(x) <: Fixed
-#             ssa_res = IR.result(push!(blocks.current_block, MLIR.Dialects.quant.scast(ssa_res; res=IR.Type(typeof(x)))))
-#         end
+        #         if typeof(x) <: Fixed
+        #             ssa_res = IR.result(push!(blocks.current_block, MLIR.Dialects.quant.scast(ssa_res; res=IR.Type(typeof(x)))))
+        #         end
+        println("printing: $ssa_res")
 
         return ssa_res
     elseif x isa Tuple       # process all tuple types
