@@ -52,6 +52,11 @@ function get_value(x, context::Context, blocks::Blocks)
         @assert isassigned(context.values, x.id) "value $x was not assigned"
         println("Collecting SSA Value")
         context.values[x.id]
+    # elseif x isa UnitRange
+    #     collected = Tuple([x.start, x.stop])
+    #     return get_value(collected, context, blocks)
+    # elseif x isa QuoteNode
+    #     return get_value(x.value, context, blocks)
     elseif x isa Core.Argument
         IR.argument(blocks.entry_block, x.n - 1)
     elseif x isa ScalarTypes 

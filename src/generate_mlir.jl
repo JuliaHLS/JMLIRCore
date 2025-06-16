@@ -13,7 +13,12 @@ struct MethodDetails
     rettype::DataType
 
     function MethodDetails(fn::Core.CodeInstance)
-        new(clean_mangled_symbol(fn.def.def.name), fn.rettype)
+        if fn.rettype isa Union
+            ret_type = Base.uniontypes(fn.rettype)[end]
+        else 
+            ret_type = fn.rettype
+        end
+        new(clean_mangled_symbol(fn.def.def.name), ret_type)
     end
 
     # translate intrinsics (sometimes unavoidable if code templates
@@ -94,6 +99,8 @@ end
     function (block::MLIR.IR.Block, args; result, quant=nothing, location=Location())
         if args isa Vector{Vector{Value}}
             push!(block, fop(args...; result, location))
+        elseif args isa Vector{Any}
+            push!(block, fop(args...; result, location))
         else
             push!(block, fop(;result, location))
         end
@@ -119,6 +126,10 @@ end
 ### ARITHMETIC ###
 function generate_mlir(::Val{:+}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.add)
+end
+
+function generate_mlir(::Val{:tuple}, rettype::Type{<:Any})
+    return single_op_wrapper_with_result(julia.tuple)
 end
 
 # NOP for fixed-point
@@ -228,6 +239,9 @@ function generate_mlir(::Val{:(not_int)}, rettype::Type{<:Any})
     return single_op_wrapper_with_result(julia.not_int)
 end
 
+function generate_mlir(::Val{:(iterate)}, rettype::Type{<:Any})
+    return single_op_wrapper_vector_args(julia.for_)
+end
 
 
 # Array operations

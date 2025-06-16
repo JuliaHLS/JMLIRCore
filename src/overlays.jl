@@ -27,43 +27,5 @@ Base.Experimental.@overlay MLIR_MT MArray{S, T, M, N}(x::Tuple) where {S, T, M, 
 Base.Experimental.@overlay MLIR_MT Base.:<<(x::Fixed{T, F}, s::Integer) where {T, F} = left_shift(x)::Fixed{T, F}
 
 Base.Experimental.@overlay MLIR_MT Base.:>>(x::Fixed{T, F}, s::Integer) where {T, F} = right_shift(x)::Fixed{T, F}
-
-
-# # Fixed Point overlays
-# Base.Experimental.@overlay MLIR_MT @force_inline function Base.:*(x::Fixed{T,Q}, y::Fixed{T,Q})::Fixed{T,Q} where {T<:Integer,Q}
-#     raw = reinterpret(T, x) * reinterpret(T, y)
-#     raw2 = raw >> Q
-#     return reinterpret(Fixed{T,Q},raw2)
-# end
-
-# Base.Experimental.@overlay MLIR_MT @force_inline function Base.:*(x::T, y::Fixed{T,Q})::Fixed{T,Q} where {T<:Integer,Q}
-#     raw = (x << Q) * reinterpret(T, y)
-#     raw2 = raw >> Q
-#     return reinterpret(Fixed{T,Q},raw2)
-# end
-
-# Base.Experimental.@overlay MLIR_MT @force_inline function Base.:+(x::Fixed{T,Q}, y::Integer)::Fixed{T,Q} where {T<:Integer,Q}
-#     raw = reinterpret(T, x) + (y << Q)
-#     return reinterpret(Fixed{T,Q},raw)
-# end
-
-# Base.Experimental.@overlay MLIR_MT @force_inline function Base.:/(x::Fixed{T,Q}, y::Fixed{T,Q})::Fixed{T,Q} where {T<:Integer,Q}
-#     raw = (reinterpret(T, x) << Q) / reinterpret(T, y)
-#     return reinterpret(Fixed{T,Q},raw)
-# end
-
-# Base.Experimental.@overlay MLIR_MT @force_inline function Base.:^(x::Fixed{T,Q}, y::Integer)::Fixed{T,Q} where {T<:Integer,Q}
-#     raw = reinterpret(T, x)
-#     # raw2 = raw >> (Q * y - 1)
-#     out = 1 << Q
-#     for _ in 1:y
-#         out *= raw
-#         out  = out >> Q
-#     end
-
-#     return reinterpret(Fixed{T,Q},out)
-# end
-
-
 end
 

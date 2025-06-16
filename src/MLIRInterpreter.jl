@@ -10,13 +10,9 @@ import .Core.Compiler: CallInfo
 
 
 function compare_symbols(args)
-    # println("processing: $args")
     name = (first(args).val)
-    # println("Checking: $name")
     for arg in args[2:end]
-        # println("processing $arg with type: $(typeof(arg))")
         if arg isa DataType && !(arg <: Fixed)
-            # println("EXITED")
             return false
         end
     end
@@ -109,8 +105,7 @@ Compiler.getresult_impl(info::ForceinlineCallInfo, idx::Int) = Compiler.getresul
 
 
 
-# TODO: can I simplify this, given that they are an intrinsic_type?
-const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===), Base.:%, LinearAlgebra.Adjoint, Base.transpose, Base.adjoint, Base.:^, Base.neg_int, :"'", Base.Math.pow_body])
+const NOINLINE_OPERATORS = Set([Base.:+, Base.:-, Base.:*, Base.:/, Base.:<, Base.:>, Base.:(==), Base.:≤, Base.:≥, Base.:≠, StaticArrays.construct_type, Base.setindex!, Base.getindex, Base.:(===), Base.:%, LinearAlgebra.Adjoint, Base.transpose, Base.adjoint, Base.:^, Base.neg_int, :"'", Base.Math.pow_body, Base.:<<, Base.:>>])
 
 """ Tag abstract calls with NoinlineCallInfo when needed """
 function Compiler.abstract_call(interp::MLIRInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int)

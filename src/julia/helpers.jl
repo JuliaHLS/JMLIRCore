@@ -6,7 +6,7 @@ module JuliaFixSSA
 using MLIR
 using MLIR.IR
 
-using MLIR.Dialects: bufferization, cf, quant, memref
+using MLIR.Dialects: bufferization, cf, quant, memref, builtin
 import MLIR
 import MLIR.IR
 using MLIR.API
@@ -130,6 +130,7 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
 
     new_op::IR.Operation = bufferization.to_tensor(IR.result(new_ssa); result=tensor_buff_type(original_op), restrict = IR.UnitAttribute(), writable=IR.UnitAttribute())
 
+    original_buffer = new_op
     
     first = IR.first_op(block)
 
@@ -158,15 +159,17 @@ function fix_ssa_dominated_block!(original_op::Operation, block::Block, new_ssa:
     end
 
     # write back to give meaningful modification
-     memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
-     convert_to_memref_op = bufferization.to_memref(new_ssa; memref=get_ret(original_ssa))
-    IR.insert_after!(block, new_op, convert_to_memref_op)
+    # if original_buffer != new_op
+         memref_type_with_dims = IR.MemRefType(eltype(get_ret(original_op)), [size(get_ret(original_op))...], IR.Attribute(0))
+         convert_to_memref_op = bufferization.to_memref(new_ssa; memref=get_ret(original_ssa))
+        IR.insert_after!(block, new_op, convert_to_memref_op)
 
-    # create meaninful write
-    # println("source $original_ssa")
-    # println("target $")
-    copy_expr = memref.copy(IR.result(convert_to_memref_op), IR.result(original_ssa))
-    IR.insert_after!(block, convert_to_memref_op, copy_expr)
+        # create meaninful write
+        # println("source $original_ssa")
+        # println("target $")
+        copy_expr = memref.copy(IR.result(convert_to_memref_op), IR.result(original_ssa))
+        IR.insert_after!(block, convert_to_memref_op, copy_expr)
+    # end
 
 end
 
@@ -330,7 +333,7 @@ using MLIR.API
 using MLIR.IR
 import MLIR.IR
 using MLIR.API
-using MLIR.Dialects: arith, tosa, tensor, math, scf, quant
+using MLIR.Dialects: arith, tosa, tensor, math, scf, quant, builtin
 
 export lower_op_to_mlir
 
@@ -342,7 +345,7 @@ module _JuliaPassHelpers
     using MLIR.IR
     import MLIR.IR
     using MLIR.API
-    using MLIR.Dialects: arith, tosa, tensor, math, scf, quant
+    using MLIR.Dialects: arith, tosa, tensor, math, scf, quant, builtin
     using FixedPointNumbers
 
     export unroll_operation!
@@ -433,8 +436,10 @@ module _JuliaPassHelpers
     function transform_indices(block, op, indices::Vector{Value})::Vector{Value}
         # convert input type to indextype
         new_indices::Vector{Value} = []
+        raw_type = IR.type(first(indices))
+        t = IR.julia_type(raw_type)
 
-        sub_const = arith.constant(;value=1,result=IR.Type(Int))
+        sub_const = arith.constant(;value=t(1),result=raw_type)
         IR.insert_before!(block, op, sub_const)
 
         for index in indices
@@ -451,9 +456,12 @@ module _JuliaPassHelpers
         # deal with vector indices
         rev = false
         new_indices = reverse(new_indices)
-        for _ in 1:(3 - length(new_indices))
+        for i in 1:(3 - length(new_indices))
+            # j_type = IR.julia_type(IR.type(new_indices[i]))
+            # t = IR.type(new_indices[i]
             index_op = arith.constant(;value=0,result=IR.Type(Int))
             IR.insert_before!(block, op, index_op)
+            println("INSERTED: $index_op")
 
             idx_cast_op = arith.index_cast(IR.result(index_op, 1); out=IR.IndexType())
             IR.insert_before!(block, op, idx_cast_op)
@@ -580,7 +588,8 @@ module _JuliaPassHelpers
         if length(operands[2:end]) == 0
             println("FOUND NO EXTRA ARGUMENTS")
             # take advantage of MLIR's strong typing
-            zero_op = arith.constant(;value=0, result=IR.Type(types[1]))
+            t = IR.julia_type(IR.Type(types[1]))
+            zero_op = arith.constant(;value=t(0), result=IR.Type(types[1]))
             IR.insert_before!(block, op, zero_op)
             zero_op_ref = IR.result(zero_op)
 
@@ -740,6 +749,19 @@ function lower_op_to_mlir(op_name::Val{:(julia_add)}, block::IR.Block, op::IR.Op
 end
 
 
+function lower_op_to_mlir(op_name::Val{:(julia_tuple)}, block::IR.Block, op::IR.Operation, replace_ops)
+    # operands = collect_operands(op)
+    # types = IR.julia_type.(IR.type.(operands))
+    # ret = IR.type.(collect_results(op))[1]
+    # cast = builtin.unrealized_conversion_cast(operands; outputs=Vector{IR.Type}([ret]))
+
+    # IR.insert_before!(block, op, cast)
+
+
+    # push!(replace_ops, [op, cast])
+end
+
+
 function lower_op_to_mlir(op_name::Val{:(julia_sub)}, block::IR.Block, op::IR.Operation, replace_ops)
     unroll_operation!(op, block, arith.subi, arith.subf, replace_ops)
     unroll_operation_mat!(op, block, tosa.sub, replace_ops)
@@ -849,6 +871,9 @@ function lower_op_to_mlir(op_name::Val{:(julia_cmp)}, block::IR.Block, op::IR.Op
     lower_cmp!(op, block, replace_ops)
 end
 
+function lower_op_to_mlir(op_name::Val{:(julia_for)}, block::IR.Block, op::IR.Operation, replace_ops)
+end
+
 function lower_op_to_mlir(op_name::Val{:(julia_not_int)}, block::IR.Block, op::IR.Operation, replace_ops)
     # collect information
     operands = collect_operands(op)
@@ -875,8 +900,9 @@ function lower_op_to_mlir(op_name::Val{:(julia_neg_int)}, block::IR.Block, op::I
     # collect information
     operands = collect_operands(op)
     ret = IR.type.(collect_results(op))[1]
+    t = IR.julia_type(ret)
 
-    bitmask = arith.constant(; value=0, result=ret)
+    bitmask = arith.constant(; value=t(0), result=ret)
 
     IR.insert_before!(block, op, bitmask)
 
@@ -980,8 +1006,12 @@ end
 function lower_op_to_mlir(op_name::Val{:(julia_mat_getindex)}, block::IR.Block, op::IR.Operation, replace_ops)
     operands = collect_operands(op)
 
+    raw_type = IR.type(operands[2])
+    # t = IR.julia_type(
+    t = IR.julia_type(raw_type)
+
     # naively cast to index TODO: only works for single requests
-    sub_const = arith.constant(;value=1,result=IR.Type(Int))
+    sub_const = arith.constant(;value=t(1),result=raw_type)
     IR.insert_before!(block, op, sub_const)
 
     indices::Vector{Value} = operands[2:end]

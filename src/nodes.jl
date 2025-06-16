@@ -27,11 +27,11 @@ function postfix_nodes(context, blocks)
       blocks.current_block = block
 
       # expand values
-      values = get_value.(values, context, blocks)
+      val = get_value.(values, context, blocks)
 
       # insert the conditional break with the expected parameters
       cond_br = cf.br(
-        values, 
+        val, 
           dest=destination
         )
       push!(block, cond_br)

@@ -10,7 +10,7 @@ macro force_inline(f)
 #     end
 
     push!(force_inline, eval(last(sig.args[1].args)))
-    return @inline(f)
+    return f
 end
 
 

@@ -20,7 +20,6 @@ macro code_mlir(call)
 
 
     # force get a new by default (if we call code_mlir via the macro)
-    # ctx = IR.Context()
 
     quote
         code_mlir($f, $args)
@@ -31,10 +30,6 @@ end
 
 "Translate typed IR into MLIR"
 function code_mlir(f, types; ctx = IR.context())
-    # if !IR._has_context()
-    #     ctx = IR.Context()
-    # end
-
     # load dialects
     for dialect in (:func, :cf, :memref, :linalg, :tensor, :math, :quant)
         IR.register_dialect!(IR.DialectHandle(dialect); context=ctx)
@@ -51,9 +46,6 @@ function code_mlir(f, types; ctx = IR.context())
     ### Preprocess ###
     ir, ret = only(CC.code_ircode(f, types; interp=interp))
     @assert first(ir.argtypes) isa Core.Const
-
-    println("Got IR: $ir")
-
 
     if ret isa Union
         error("Return type needs to be type-stable")
@@ -86,7 +78,6 @@ function code_mlir(f, types; ctx = IR.context())
         block_array,
         nothing
     )
-
 
     ### Process into blocks ###
     process_blocks(blocks, context)
@@ -127,7 +118,6 @@ function code_mlir(f, types; ctx = IR.context())
         body = IR.body(mod)
         push!(body, op)
 
-        println("Code gen produced the following MLIR: $mod")
 
         ### Lower from julia dialect ###
         run!(JuliaPasses.FixTensorSSA(), mod, ctx)

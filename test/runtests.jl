@@ -10,7 +10,7 @@ pow_test(a, b) = a ^ b
 rem(A, B) = A % B
 
 
-function test_loops()
+function nested_loops()
    sum = 0
    for i in 1:3
        for j in 1:3
@@ -47,17 +47,17 @@ function modify_vector(idx, val)
    return a_vec
 end
 
-function create_mat()
+function create_matrix()
     return @MMatrix [1 2 3 4 5; 6 7 8 9 0]
 end
 
-function modify_mat(idx1, idx2, val)
+function modify_matrix(idx1, idx2, val)
     a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
     a[idx1, idx2] = val
     return a
 end
 
-function set_and_get_mat(idx1, idx2, ret_idx1, ret_idx2, val)
+function set_and_get_matrix(idx1, idx2, ret_idx1, ret_idx2, val)
     a = @MMatrix [1 2 3 4 5; 6 7 8 9 0]
     a[idx1, idx2] = val
     return a[ret_idx1, ret_idx2]
@@ -130,7 +130,7 @@ end
 
 
 ## produces two basic blocks that merge at the same node
-function multi_route_node(A, B)
+function implicit_else(A, B)
 	result = 0
 	if A < B
 	   result = A + B
@@ -197,8 +197,8 @@ end
 
 
    ### CONTROL FLOW ###
-   @test (@eval_mlir multi_route_node(5, 10)) == (@eval multi_route_node(5, 10)) 
-   @test (@eval_mlir multi_route_node(10, 5)) == (@eval multi_route_node(10, 5)) 
+   @test (@eval_mlir implicit_else(5, 10)) == (@eval implicit_else(5, 10)) 
+   @test (@eval_mlir implicit_else(10, 5)) == (@eval implicit_else(10, 5)) 
 
 
    ### FLOAT ###
@@ -250,9 +250,9 @@ end
 
 
    ## MATRIX OPERATION TEST ##
-   @test (@eval_mlir create_mat()) == (@eval create_mat())
-   @test (@eval_mlir modify_mat(2, 3, 5)) == (@eval modify_mat(2, 3, 5))
-   @test (@eval_mlir set_and_get_mat(2, 3, 2, 2, 5)) == (@eval set_and_get_mat(2, 3, 2, 2, 5))
+   @test (@eval_mlir create_matrix()) == (@eval create_matrix())
+   @test (@eval_mlir modify_matrix(2, 3, 5)) == (@eval modify_matrix(2, 3, 5))
+   @test (@eval_mlir set_and_get_matrix(2, 3, 2, 2, 5)) == (@eval set_and_get_matrix(2, 3, 2, 2, 5))
    @test (@eval_mlir add_mat_test()) == (@eval add_mat_test())
    @test (@eval_mlir sub_mat_test()) == (@eval sub_mat_test())
    @test (@eval_mlir matmul_test()) == (@eval matmul_test())
@@ -266,7 +266,7 @@ end
    @test (@eval_mlir modify_mat_float(2, 3, 5.0)) == (@eval modify_mat_float(2, 3, 5.0))
    @test (@eval_mlir set_and_get_mat_float(2, 3, 2, 2, 5.0)) == (@eval set_and_get_mat_float(2, 3, 2, 2, 5.0))
    @test (@eval_mlir transpose_test()) == (@eval transpose_test())
-   @test (@eval_mlir test_loops()) == (@eval test_loops())
+   @test (@eval_mlir nested_loops()) == (@eval nested_loops())
    @test (@eval_mlir augment_matrix()) == (@eval augment_matrix())
    @test (@eval_mlir modify_vector(5, 2)) == (@eval modify_vector(5, 2))
    @test (@eval_mlir modify_vector(1, 2)) == (@eval modify_vector(1, 2))

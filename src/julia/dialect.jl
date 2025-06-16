@@ -5,7 +5,7 @@ using MLIR:get_type, julia_type
 using MLIR.IR
 
 # Generate Arithmetic Operators
-for f in (:add, :sub, :mul, :div, :rem, :pow, :not_int)
+for f in (:add, :sub, :mul, :div, :rem, :pow, :not_int, :tuple)
     @eval function $f(
                       operands::Value...; result=nothing::Union{Nothing,IR.Type}, output=nothing::Union{Nothing,IR.Type}, quant=nothing::Union{Nothing, IR.NamedAttribute}, location=Location()
     )
@@ -91,6 +91,28 @@ function mat_inst(elements::Array{Value}; result::IR.Type, location=Location())
         result_inference=false,
     )
 end
+
+
+# Array initialiser
+function for_(elements::Array{Value}, state::Value; result::IR.Type, location=Location())
+    _results = IR.Type[result,]
+    _operands = Value[elements...,state]
+    _owned_regions = Region[]
+    _successors = Block[]
+    _attributes = IR.NamedAttribute[]
+
+    return IR.create_operation(
+        "julia.for",
+        location;
+        operands=_operands,
+        owned_regions=_owned_regions,
+        successors=_successors,
+        attributes=_attributes,
+        results=_results,
+        result_inference=false,
+    )
+end
+
 
 function mat_inst(; result::IR.Type, location=Location())
     _results = IR.Type[result,]

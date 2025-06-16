@@ -53,7 +53,6 @@ function IR.Type(T::Core.Type{<:Unsigned}; context::IR.Context=context())
 end
 
 function IR.Type(T::Core.Type{<:Fixed}; context::IR.Context=context())
-    println("Sizeof: $(sizeof(T) * 8)")
     container, frac_bits = T.parameters
     scale = 1.0 / (2.0 ^ frac_bits)
     zp = 0.0
@@ -80,6 +79,12 @@ get_op_with_ownership(module_::IR.Module) = IR.Operation(MLIR.API.mlirModuleGetO
 
 ## StaticArrays 
 function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
+    if T isa UnionAll
+        if T.body <: AbstractArray
+            T = T.body
+        end
+    end
+    println("Got type: $(T.parameters)")
     dims::Vector{Int64} = collect(T.parameters[1].parameters)
 
     for _ in 1:(3 - length(dims))
@@ -92,6 +97,11 @@ function IR.Type(T::Core.Type{<:AbstractArray}; context::IR.Context=context())
 
     return IR.TensorType(dims, type)
 end
+
+function IR.Type(T::UnionAll; context=IR.context())
+    return IR.Type(T.body; context=context)
+end
+
 
 # Adjoint
 function IR.Type(T::Core.Type{<:LinearAlgebra.Adjoint}; context::IR.Context=context())

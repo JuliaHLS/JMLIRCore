@@ -157,6 +157,63 @@ function IR.pass_run(::FixImplicitControlFlow, func_op)
     JuliaFixSSA.fix_implicit_blocks!(implicit_blocks)
 end
 
+struct MapTuple <: IR.AbstractPass end
+
+IR.opname(::MapTuple) = "func.func"
+
+import MLIR.Dialects: func
+
+function IR.pass_run(::MapTuple, func_op)
+    println("Running MapTuple")
+    
+    # collect implicit blocks
+    # implicit_blocks = JuliaFixSSA.collect_implicit_blocks(func_op)
+    tuples = []
+
+    for region in IR.RegionIterator(func_op)
+        for block in IR.BlockIterator(region)
+            for op in IR.OperationIterator(block)
+                op_name = IR.name(op)
+
+                if length(op_name) >= 11 && op_name[1:11] == "julia.tuple"
+                    push!(tuples, [block, op])
+                end
+            end
+        end
+    end
+
+    println("found tuples $tuples")
+    for (block, tuple) in tuples
+        println("PROCESSIN MORE")
+        for op in IR.OperationIterator(block)
+            op_name = IR.name(op)
+            println("processing $op_name")
+            
+            if length(op_name) >= 11 && op_name[1:11] == "func.return"
+                operands = JuliaFixSSA.collect_operands(op) 
+                for (i, present_operand) in enumerate(operands)
+                    println("present: $present_operand of type: $(typeof(present_operand))")
+                    println("compared against: $tuple of type: $(typeof(tuple))")
+                    if IR.result(tuple) == present_operand
+                        println("HERE")
+                        rep_op_1 = IR.operand(tuple, 1)
+                        rep_op_2 = IR.operand(tuple, 2)
+                        new_ret = func.return_([IR.result(rep_op_1), IR.result(rep_op_2)])
+                        # println("REPREP: $rep_op")
+                        # IR.operand!(op, i+1, rep_op)
+                        # IR
+                    end
+                end
+            end
+        end
+    end
+
+    
+
+    # fix implicit blocks
+    # JuliaFixSSA.fix_implicit_blocks!(implicit_blocks)
+end
+
 struct FixTensorInstantiation <: IR.AbstractPass end
 
 IR.opname(::FixTensorInstantiation) = "func.func"
@@ -181,7 +238,7 @@ function IR.pass_run(::FixTensorInstantiation, func_op)
                                 print("Got attr: $op_attr")
                                 println("h")
                                 println("Got val: $(API.mlirDenseElementsAttrGetInt64Value(op_attr, i-1))")
-                                push!(collected_args, API.mlirDenseElementsAttrGetInt64Value(op_attr, i-1))
+                                push!(collected_args, API.mlirDenseElementsAttrGetInt32Value(op_attr, i-1))
                             end
 
                             println("Collected the arguments: $collected_args of type: $(typeof.(collected_args))")

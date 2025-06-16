@@ -6,20 +6,7 @@ function get_q_bits(arg)
 end
 
 
-# function get_q_info(args)::Union{Nothing, IR.NamedAttribute}
-#     println("HERE########################################################")
-#     arg_array = []
-#     for arg in args
-#         println("ARG: $arg")
-#         push!(arg_array, typeof(arg) isa Real && typeof(arg) <: Fixed ? get_q_bits(arg) : -1)
-#     end
 
-#     if length(arg_array) == 0
-#         return q_attr = IR.NamedAttribute("fixed_q", IR.DenseArrayAttribute(Int32.(arg_array)))
-#     else
-#         return nothing
-#     end
-# end
 
 function process_expr(inst::Expr, context::Context, blocks::Blocks)
     if Meta.isexpr(inst, :call) || Meta.isexpr(inst, :invoke)
@@ -41,31 +28,27 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
 
         # store type as IR.Type
         println("val_type: $val_type")
+        
+        if val_type isa Union
+            val_type = Base.uniontypes(val_type)[end]
+        end
         type = IR.Type(val_type)
         
         # extract metadata
         fop! = intrinsic_to_mlir(called_func)
 
         # filter out unwanted arguments
-        extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef || arg isa QuoteNode), inst.args[(begin+1):end])
+        extracted_args = filter(arg -> !(arg isa DataType || arg isa GlobalRef || (arg isa QuoteNode && arg.value isa Symbol)), inst.args[(begin+1):end])
 
-        println("PRocessing args: $extracted_args")
-
-        println("processign extracting args: $extracted_args")
-        println("val1: $extracted_args")
-        println("processing block: $(blocks.current_block)")
-        args = get_value.(extracted_args, context, blocks)
-
-        # println("GOT ARGS: $args")
-        println("Collected")
-
-        # q_info = get_q_info(extracted_args)
-        # println("Q: $q_info")
+        if nothing in extracted_args
+            args = get_value.([false, true], context, blocks)
+        else
+            args = get_value.(extracted_args, context, blocks)
+        end
 
         # TODO: investigate the feasibility of reintroducing location in Julia v1.12
         # location = Location(string(context.line.file), context.line.line, 0)
         res = IR.result(fop!(blocks.current_block, args; result=type::Union{Nothing,IR.Type})) 
-        println("Processing RES: $res")
 
         context.values[context.sidx] = res
     elseif Meta.isexpr(inst, :code_coverage_effect)
@@ -85,16 +68,10 @@ function process_expr(inst::Expr, context::Context, blocks::Blocks)
 
         args = get_value.(extracted_args, context, blocks)
 
-        # if length(args) == 0
-        #     args::Vector{Vector{Value}} = [[]]
-        # end
-
         # perform transpose
         type = IR.Type(val_type)
 
         res = IR.result(fop!(blocks.current_block, args; result=type::Union{Nothing,IR.Type}))
-
-        println("Processing RES: $res")
 
         context.values[context.sidx] = res
     else
